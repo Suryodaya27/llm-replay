@@ -1,0 +1,52 @@
+{
+  "name": "llm-replay",
+  "version": "0.1.0",
+  "description": "Deterministic replay engine for AI agents — capture, replay, branch, and test LLM sessions across Ollama, OpenAI, and Anthropic",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "llm-replay": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest --run",
+    "prepublishOnly": "npm run build && npm test",
+    "start": "node dist/cli.js"
+  },
+  "keywords": [
+    "llm",
+    "replay",
+    "deterministic",
+    "ollama",
+    "openai",
+    "anthropic",
+    "agents",
+    "debugging",
+    "testing",
+    "eval"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.23.11",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
