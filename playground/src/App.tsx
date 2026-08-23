@@ -1,19 +1,20 @@
 import { useState } from 'react';
 import SessionList from './components/SessionList';
-import Timeline from './components/Timeline';
+import ConversationView from './components/ConversationView';
 import DiffView from './components/DiffView';
+import LiveView from './components/LiveView';
 import './styles.css';
 
-type View = 'list' | 'timeline' | 'diff';
+type View = 'live' | 'list' | 'session' | 'diff';
 
 export default function App() {
-  const [view, setView] = useState<View>('list');
+  const [view, setView] = useState<View>('live');
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [diffSessions, setDiffSessions] = useState<[string, string] | null>(null);
 
-  const openTimeline = (id: string) => {
+  const openSession = (id: string) => {
     setSelectedSession(id);
-    setView('timeline');
+    setView('session');
   };
 
   const openDiff = (id1: string, id2: string) => {
@@ -30,16 +31,20 @@ export default function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1 onClick={goBack} style={{ cursor: 'pointer' }}>llm-replay</h1>
-        <span className="subtitle">Deterministic Replay Playground</span>
+        <h1 onClick={() => setView('live')}>llm-replay</h1>
+        <nav className="nav-tabs">
+          <button className={`nav-tab ${view === 'live' ? 'active' : ''}`} onClick={() => setView('live')}>Live</button>
+          <button className={`nav-tab ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')}>Sessions</button>
+        </nav>
       </header>
 
-      <main className="main">
+      <main>
+        {view === 'live' && <LiveView />}
         {view === 'list' && (
-          <SessionList onSelect={openTimeline} onDiff={openDiff} />
+          <SessionList onSelect={openSession} onDiff={openDiff} />
         )}
-        {view === 'timeline' && selectedSession && (
-          <Timeline sessionId={selectedSession} onBack={goBack} onBranchCreated={(newId) => openDiff(selectedSession, newId)} />
+        {view === 'session' && selectedSession && (
+          <ConversationView sessionId={selectedSession} onBack={goBack} />
         )}
         {view === 'diff' && diffSessions && (
           <DiffView session1={diffSessions[0]} session2={diffSessions[1]} onBack={goBack} />

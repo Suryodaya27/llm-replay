@@ -14,12 +14,12 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { EventStore } from './event-store.js';
-import { createBranch } from './branch.js';
-import { reExecuteSession } from './re-execute.js';
 import { startProxy, type ProxyInstance } from './proxy.js';
 import { routerConfigFromEnv } from './providers/index.js';
 import { judgeSessions } from './judge.js';
-import type { BranchPatch, ReplayEvent, ResponseEvent } from './types.js';
+import { parseConversation } from './conversation-parser.js';
+import { LiveBroadcast } from './live-broadcast.js';
+import type { ReplayEvent, ResponseEvent } from './types.js';
 
 const OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://localhost:11434';
 
@@ -28,7 +28,7 @@ export interface ApiServerOptions {
   storeDir?: string;
 }
 
-export async function startApiServer(opts?: ApiServerOptions): Promise<{ port: number; close: () => Promise<void> }> {
+export async function startApiServer(opts?: ApiServerOptions): Promise<{ port: number; broadcast: LiveBroadcast; close: () => Promise<void> }> {
   const port = opts?.port ?? 3001;
   const store = new EventStore({ storeDir: opts?.storeDir });
   await store.init();
@@ -95,6 +95,20 @@ export async function startApiServer(opts?: ApiServerOptions): Promise<{ port: n
         return;
       }
 
+      // Get parsed conversation (readable timeline)
+      const convMatch = path.match(/^\/api\/sessions\/([^/]+)\/conversation$/);
+      if (convMatch && req.method === 'GET') {
+        const id = decodeURIComponent(convMatch[1]);
+        if (!(await store.exists(id))) {
+          json(res, { error: 'Session not found' }, 404);
+          return;
+        }
+        const events = await store.readAll(id);
+        const parsed = parseConversation(id, events);
+        json(res, parsed);
+        return;
+      }
+
       // List Ollama models
       if (path === '/api/models' && req.method === 'GET') {
         try {
@@ -120,75 +134,6 @@ export async function startApiServer(opts?: ApiServerOptions): Promise<{ port: n
             .map(([prefix]) => `${prefix}*`),
         }));
         json(res, providers);
-        return;
-      }
-
-      // Create branch
-      if (path === '/api/branch' && req.method === 'POST') {
-        const body = await readBody(req);
-        const { parentSessionId, branchAt, patch, newSessionId } = JSON.parse(body) as {
-          parentSessionId: string;
-          branchAt: number;
-          patch: BranchPatch;
-          newSessionId?: string;
-        };
-
-        if (!parentSessionId || branchAt === undefined || !patch) {
-          json(res, { error: 'Missing parentSessionId, branchAt, or patch' }, 400);
-          return;
-        }
-
-        const sessionId = newSessionId ?? `branch-${Date.now()}`;
-        const branch = await createBranch({
-          parentSessionId,
-          branchAt,
-          patch,
-          store,
-          ollamaBaseUrl: OLLAMA_URL,
-          newSessionId: sessionId,
-        });
-
-        json(res, {
-          sessionId: branch.sessionId,
-          eventsKept: branch.eventsKept,
-          patchesApplied: branch.patchesApplied,
-        });
-        return;
-      }
-
-      // Re-execute session with different model/prompt (actually calls Ollama)
-      if (path === '/api/reexec' && req.method === 'POST') {
-        const body = await readBody(req);
-        const { parentSessionId, patch, newSessionId } = JSON.parse(body) as {
-          parentSessionId: string;
-          patch: BranchPatch;
-          newSessionId?: string;
-        };
-
-        if (!parentSessionId || !patch) {
-          json(res, { error: 'Missing parentSessionId or patch' }, 400);
-          return;
-        }
-
-        if (!(await store.exists(parentSessionId))) {
-          json(res, { error: `Session "${parentSessionId}" not found` }, 404);
-          return;
-        }
-
-        const result = await reExecuteSession({
-          parentSessionId,
-          patch,
-          store,
-          ollamaBaseUrl: OLLAMA_URL,
-          newSessionId,
-        });
-
-        json(res, {
-          sessionId: result.sessionId,
-          turnsExecuted: result.turnsExecuted,
-          totalTokens: result.totalTokens,
-          durationMs: result.durationMs,
-        });
         return;
       }
 
@@ -307,8 +252,10 @@ export async function startApiServer(opts?: ApiServerOptions): Promise<{ port: n
 
   return new Promise((resolve) => {
     server.listen(port, () => {
+      const broadcast = new LiveBroadcast(server);
       resolve({
         port,
+        broadcast,
         close: () => new Promise<void>((r) => {
           if (activeProxy) activeProxy.close().then(() => server.close(() => r()));
           else server.close(() => r());

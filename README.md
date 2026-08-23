@@ -1,37 +1,100 @@
 # llm-replay
 
-Deterministic replay engine for AI agents. Capture, replay, branch, test, and judge any LLM agent session across Ollama, OpenAI, and Anthropic.
+Agent Session Inspector — see exactly what your AI agent did, step by step, in real-time.
 
 ## What it does
 
-A transparent HTTP proxy between your AI agent and the LLM provider. Five core capabilities:
+A transparent HTTP proxy that captures all LLM traffic from any AI agent and presents it as a readable conversation flow. Watch your agent think, call tools, and produce answers — live in the browser or after the fact.
 
-- **Capture** — records every request, response, and stream chunk to a JSONL session file
-- **Replay** — serves cached responses instantly. The agent relives the same conversation without hitting the LLM.
-- **Re-execute** — replay the same inputs through a different model and get real new responses
-- **Test** — run assertions against recorded sessions in CI. Exit code 0/1. No LLM needed.
-- **Judge** — AI evaluates which model's outputs are better across accuracy, safety, relevance, completeness, conciseness, and coherence
+```
+Your Agent (any language) → proxy (:11435) → Ollama / OpenAI / Anthropic
+                                ↓
+                    Live Dashboard + Session Recording
+```
 
-Plus a **web playground** for visual timeline inspection, one-click model comparison, and AI-powered scoring.
+No SDK. No code changes. Just point your agent's HTTP at the proxy.
 
-## Why
+## Quick Start
 
-| Without llm-replay | With llm-replay |
+**One command starts everything:**
+
+```bash
+cd llm-replay
+npm run build
+node dist/cli.js ui
+```
+
+This starts:
+- API server on `:3001`
+- Live WebSocket on `ws://localhost:3001/ws`
+- Capture proxy on `:11435`
+
+**Open the dashboard:**
+
+```bash
+cd playground && npm run dev
+# Open http://localhost:5173
+```
+
+**Run any agent:**
+
+```bash
+# Point your agent at localhost:11435 instead of localhost:11434
+MODEL=minicpm-v4.6:latest npx tsx my-agent.ts --proxy
+```
+
+Watch the **Live** tab — you'll see events appear in real-time as the agent works.
+
+## What You See
+
+The inspector parses raw HTTP into a readable story:
+
+```
+→ USER
+  "What's the weather in London and Paris? Calculate the average."
+
+⚡ TOOL CALL — get_weather
+    city: London
+← TOOL RESULT
+    {"temperature_celsius": 14, "condition": "Rainy"}
+
+⚡ TOOL CALL — get_weather
+    city: Paris
+← TOOL RESULT
+    {"temperature_celsius": 18, "condition": "Overcast"}
+
+⚡ TOOL CALL — calculate
+    expression: (14 + 18) / 2
+← TOOL RESULT
+    {"result": 16}
+
+✓ FINAL ANSWER                                         3.2s
+  The average temperature is 16°C (60.8°F).
+  London: 14°C (Rainy), Paris: 18°C (Overcast).
+```
+
+Every tool call shows expandable inputs and outputs. Click to see the full data.
+
+## Features
+
+| Feature | Description |
 |---|---|
-| "Why did the agent do that?" → 4 hours of log archaeology | Replay the session in 0.5s, see exact inputs/outputs |
-| "Would a different model be better?" → manually re-run everything | `reexec --model mistral` and compare side-by-side |
-| "Did my prompt change break anything?" → vibes-based testing | `test --assert "contains:async"` in CI, exit code 1 on regression |
-| "Which model is actually better for my use case?" → subjective opinions | `judge --a session1 --b session2` — AI scores on 6 criteria |
-| Streaming agents can't be recorded | Full NDJSON chunk capture and replay |
-| Multiple parallel agents need multiple ports | One proxy, `X-Session-Id` header routes to separate sessions |
-| Switching between OpenAI/Claude/Ollama needs code changes | One proxy, routes by model name automatically |
+| **Live Dashboard** | Watch events stream in real-time via WebSocket as your agent runs |
+| **Session Inspector** | Click any recorded session to see the full conversation flow |
+| **Tool Call Parsing** | Extracts structured tool calls (OpenAI, Anthropic, Ollama formats) |
+| **Expandable I/O** | Click any tool call to see inputs and outputs |
+| **Multi-Provider** | Routes to Ollama, OpenAI, or Anthropic by model name |
+| **Multi-Session** | One proxy handles parallel agents via `X-Session-Id` header |
+| **Token Tracking** | Tokens and latency per step, extracted automatically |
+| **Session Stats** | Total tokens, duration, tool usage summary |
+| **CI Assertions** | Test recorded sessions with assertions (exit 0/1) |
 
 ## Requirements
 
 - Node.js >= 20
 - [Ollama](https://ollama.com) running locally (for local models)
-- OpenAI API key (optional, for GPT models)
-- Anthropic API key (optional, for Claude models)
+- OpenAI API key (optional)
+- Anthropic API key (optional)
 
 ## Install
 
@@ -40,111 +103,78 @@ git clone <repo-url>
 cd llm-replay
 npm install
 npm run build
-npm link  # makes `llm-replay` command available globally
+npm link  # optional: makes `llm-replay` command available globally
 ```
 
 ### Provider Setup
 
 ```bash
-# Ollama — works out of the box, no config needed
+# Ollama — works out of the box
 
 # OpenAI (optional)
 export OPENAI_API_KEY=sk-...
-export OPENAI_BASE_URL=https://api.openai.com  # or any OpenAI-compatible API
 
 # Anthropic (optional)
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-The proxy auto-detects which providers are available from env vars.
+## Usage
 
-## Quick Start
-
-### 1. Capture a session
+### Start the dashboard
 
 ```bash
-llm-replay capture --session my-run
+node dist/cli.js ui
 ```
 
-Your agent points at `localhost:11435`. The proxy accepts both `/api/chat` (Ollama) and `/v1/chat/completions` (OpenAI format), routing by model name:
+Starts API server + capture proxy + WebSocket. One command.
 
-- `gpt-*`, `o1*`, `o3*` → OpenAI
-- `claude-*` → Anthropic
-- Everything else → Ollama
+### Run your agent
 
-Works with `stream: true` and `stream: false`.
+Point your agent's LLM URL at `http://localhost:11435`:
 
-### 2. Replay instantly
+```python
+# Python
+response = requests.post("http://localhost:11435/api/chat",
+    json={"model": "qwen3.6", "messages": [...]})
+```
+
+```typescript
+// TypeScript
+const res = await fetch("http://localhost:11435/api/chat", {
+  body: JSON.stringify({ model: "minicpm-v4.6:latest", messages: [...] })
+});
+```
 
 ```bash
-llm-replay replay --session my-run
+# curl
+curl http://localhost:11435/api/chat -d '{"model":"minicpm-v4.6:latest","messages":[...]}'
 ```
 
-Same agent, same output, under 1 second. No LLM calls.
+Works with any language. The proxy handles Ollama format (`/api/chat`) and OpenAI format (`/v1/chat/completions`).
 
-### 3. Re-execute with a different model
+### View the live dashboard
+
+Open `http://localhost:5173`. The **Live** tab shows events streaming in real-time. The **Sessions** tab shows all recorded sessions you can inspect.
+
+### Capture separately (without dashboard)
 
 ```bash
-llm-replay reexec --parent my-run --model minicpm-v4.6:latest --session my-run-minicpm
+# Just the proxy, no UI
+node dist/cli.js capture --session my-run
+
+# List recorded sessions
+node dist/cli.js ls
+
+# View stats
+node dist/cli.js stats --session my-run
+
+# CI assertions
+node dist/cli.js test --session my-run --assert "contains:async" "not_contains:error"
 ```
 
-Actually calls the new model with the same inputs. Produces a real session for comparison.
+### Parallel agents
 
-### 4. Judge which model is better
-
-```bash
-llm-replay judge --a my-run --b my-run-minicpm
-```
-
-Output:
-```
-══════════════════════════════════════════════════
-  my-run: 6.1/10 avg | my-run-minicpm: 5.4/10 avg | Winner: my-run (5-1-1)
-══════════════════════════════════════════════════
-
-  Turn 1: ◀ 7.2/10 vs 5.8/10
-    "Review this code and list all bugs..."
-    → A provides more specific technical details with accurate references
-
-  Turn 2: ◀ 6.5/10 vs 5.1/10
-    "Write the corrected version..."
-    → A's fix handles more edge cases
-
-  Turn 3: = 5.0/10 vs 5.0/10
-    "Give a one-line summary..."
-    → Both adequate, similar quality
-```
-
-The judge evaluates each turn on 6 criteria:
-
-| Criteria | What it measures |
-|---|---|
-| **Accuracy** | Factual correctness, hallucination detection |
-| **Completeness** | Coverage of the topic |
-| **Conciseness** | Clear and direct, no fluff |
-| **Safety** | No harmful advice, bias, or dangerous suggestions |
-| **Relevance** | Actually answers the question asked |
-| **Coherence** | Logical structure, internal consistency |
-
-Note: The judge uses an LLM (default: minicpm-v4.6) to score. Scores may vary slightly between runs due to LLM non-determinism. Use `--model` to pick a stronger judge model for more consistent results.
-
-### 5. Compare stats
-
-```bash
-llm-replay stats --session my-run
-llm-replay stats --session my-run-minicpm
-```
-
-### 6. CI/CD assertions
-
-```bash
-llm-replay test --session my-run --assert "contains:async" "not_contains:error" "max_latency_ms:60000"
-# Exit code: 0 (pass) or 1 (fail)
-```
-
-### 7. Parallel agents
-
-One proxy handles multiple agents via `X-Session-Id` header:
+One proxy, multiple agents — use the `X-Session-Id` header:
 
 ```python
 requests.post("http://localhost:11435/api/chat",
@@ -152,73 +182,55 @@ requests.post("http://localhost:11435/api/chat",
     json={"model": "qwen3.6", "messages": [...]})
 ```
 
-Each session ID gets its own recording file.
+Each session ID gets its own recording and timeline.
 
-### 8. Web Playground
-
-```bash
-llm-replay ui                    # API server on :3001
-cd playground && npm run dev     # React UI on :5173
-```
-
-Features:
-- Session list with model info
-- Event timeline with "Branch here" buttons
-- One-click re-execution with model picker
-- Side-by-side diff view
-- AI judge with per-turn scoring and verdict
-
-## CLI Reference
+## CLI Commands
 
 | Command | Description |
 |---------|-------------|
-| `capture` | Start proxy in capture mode |
-| `replay` | Start proxy in replay mode |
-| `branch` | Fork a session with patches |
-| `reexec` | Re-execute through a different model |
+| `ui` | Start everything (API + proxy + WebSocket) |
+| `capture` | Start capture proxy only |
+| `replay` | Serve recorded responses (for testing agent code without LLM) |
+| `stats` | Token/latency breakdown |
+| `test` | CI assertions against sessions |
 | `judge` | AI-score comparison between two sessions |
-| `stats` | Token usage and latency breakdown |
-| `test` | CI assertions (exit 0/1) |
 | `ls` | List sessions |
 | `inspect` | View raw events |
-| `rm` | Delete a session |
-| `ui` | Start playground API server |
+| `rm` | Delete session |
 
-### judge options
+## How It Works
 
-| Flag | Description |
-|------|-------------|
-| `--a <id>` | First session |
-| `--b <id>` | Second session |
-| `-m, --model <model>` | Judge model (default: minicpm-v4.6:latest) |
-| `--json` | Output as JSON |
+1. Your agent calls `fetch("http://localhost:11435/api/chat", ...)` 
+2. The proxy forwards to the real LLM provider, records request + response
+3. Events are saved to `~/.llm-replay/sessions/<id>.jsonl`
+4. Events are simultaneously broadcast via WebSocket to the live dashboard
+5. The conversation parser extracts tool calls, reasoning, and answers from raw HTTP
+6. The UI renders the parsed conversation as a readable timeline
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────┐
-│         Web Playground (:5173)              │
-│   Sessions │ Timeline │ Diff │ Judge        │
+│         Live Dashboard (:5173)              │
+│   Live Tab (WebSocket) │ Sessions Tab       │
+└───────────────────────┬─────────────────────┘
+                        │ WebSocket + REST
+┌───────────────────────▼─────────────────────┐
+│         API Server (:3001)                  │
+│   /ws │ /api/sessions │ /api/conversation   │
 └───────────────────────┬─────────────────────┘
                         │
 ┌───────────────────────▼─────────────────────┐
-│            API Server (:3001)                │
-└───────────────────────┬─────────────────────┘
-                        │
-┌───────────────────────▼─────────────────────┐
-│           Replay Proxy (:11435)             │
+│         Capture Proxy (:11435)              │
 │                                             │
-│  Provider Router:                           │
-│    gpt-* / o1* / o3*  → OpenAI adapter     │
-│    claude-*            → Anthropic adapter  │
-│    *                   → Ollama adapter     │
+│   Provider Router:                          │
+│     gpt-* → OpenAI                          │
+│     claude-* → Anthropic                    │
+│     * → Ollama                              │
 │                                             │
-│  Session Router (X-Session-Id header)       │
-│  Modes: Capture │ Replay │ Branch           │
-└──────────┬──────────┬──────────┬────────────┘
-           │          │          │
-           ▼          ▼          ▼
-       Ollama     OpenAI     Anthropic
+│   Session Router (X-Session-Id header)      │
+│   Event Store (JSONL) + Live Broadcast (WS) │
+└─────────────────────────────────────────────┘
 ```
 
 ## Project Structure
@@ -226,118 +238,43 @@ Features:
 ```
 llm-replay/
 ├── src/
-│   ├── types.ts             # Event schema + assertion types
-│   ├── event-store.ts       # JSONL persistence
-│   ├── clock.ts             # Real + Virtual clock
-│   ├── capture.ts           # Streaming + buffered capture
-│   ├── replay.ts            # Streaming + buffered replay
-│   ├── branch.ts            # Timeline forking
-│   ├── re-execute.ts        # Model re-execution
-│   ├── stats.ts             # Token/latency extraction
-│   ├── test-runner.ts       # CI assertion engine
-│   ├── judge.ts             # LLM-as-a-judge scoring
-│   ├── proxy.ts             # Multi-provider proxy
-│   ├── api-server.ts        # REST API
-│   ├── cli.ts               # CLI commands
-│   ├── index.ts             # Public API
-│   └── providers/
-│       ├── types.ts         # Provider interface
-│       ├── router.ts        # Model → provider routing
+│   ├── proxy.ts               # Multi-provider capture proxy
+│   ├── api-server.ts          # REST API + WebSocket
+│   ├── live-broadcast.ts      # WebSocket event broadcasting
+│   ├── conversation-parser.ts # Extracts tool calls from raw HTTP
+│   ├── event-store.ts         # JSONL persistence with live listener
+│   ├── capture.ts             # HTTP interception + recording
+│   ├── replay.ts              # Cached response serving
+│   ├── stats.ts               # Token/latency extraction
+│   ├── test-runner.ts         # CI assertion engine
+│   ├── judge.ts               # LLM-as-a-judge scoring
+│   ├── cli.ts                 # All CLI commands
+│   └── providers/             # LLM provider adapters
 │       ├── ollama.ts
 │       ├── openai.ts
 │       └── anthropic.ts
-├── playground/              # React web UI
-├── examples/
-│   └── code-reviewer.ts    # Demo agent
+├── playground/                # React web UI
+│   └── src/
+│       ├── App.tsx            # Live + Sessions tabs
+│       └── components/
+│           ├── LiveView.tsx        # Real-time event stream
+│           ├── ConversationView.tsx # Parsed session inspector
+│           ├── SessionList.tsx      # Session browser
+│           └── DiffView.tsx         # Side-by-side comparison
 ├── package.json
 └── tsconfig.json
 ```
 
-## Programmatic API
+## Supported Formats
 
-```typescript
-import {
-  startProxy, EventStore, reExecuteSession,
-  getSessionStats, runTest, judgeSessions,
-  ProviderRouter, routerConfigFromEnv
-} from 'llm-replay';
+The conversation parser handles tool calls from:
 
-// Capture
-const proxy = await startProxy({
-  port: 11435, mode: 'capture',
-  sessionId: 'my-session', ollamaBaseUrl: 'http://localhost:11434',
-});
-
-// Re-execute
-const store = new EventStore();
-await reExecuteSession({
-  parentSessionId: 'my-session',
-  patch: { model: 'mistral' },
-  store, ollamaBaseUrl: 'http://localhost:11434',
-});
-
-// Judge
-const judgment = await judgeSessions(turns, 'session-a', 'session-b', {
-  model: 'minicpm-v4.6:latest',
-});
-console.log(judgment.overall.summary);
-
-// CI test
-const test = await runTest({
-  sessionId: 'my-session', store,
-  assertions: [{ type: 'contains', value: 'async' }],
-});
-process.exit(test.passed ? 0 : 1);
-```
-
-## Design Decisions
-
-Key choices made and why — useful for explaining the architecture to others.
-
-### Why a proxy instead of an SDK?
-
-An SDK requires modifying agent code. A proxy is transparent — point any agent at `localhost:11435` regardless of language, framework, or LLM library. Python, TypeScript, Go, curl — all work without changes. The agent doesn't know it's being recorded.
-
-### Why JSONL for storage?
-
-- **Append-only** — writes never corrupt existing data, even on crash
-- **Streamable** — read million-event sessions line-by-line without loading into RAM
-- **Greppable** — `grep "error" session.jsonl` works from the terminal
-- **No database dependency** — one file per session, copy/share/delete trivially
-
-Trade-off: no indexing or querying. Acceptable because sessions are typically <10K events and read sequentially.
-
-### Why provider adapters instead of a universal format?
-
-Each LLM API has quirks (Anthropic's top-level system prompt, Ollama's options format, OpenAI's streaming SSE). Adapters isolate these differences behind one `Provider` interface. Adding a new provider is one file, no existing code changes. The proxy doesn't know or care what's behind the adapter.
-
-### Why deterministic judging (seed: 42, temperature: 0)?
-
-LLM-as-a-judge is inherently non-deterministic. Without pinning seed and temperature, the same comparison produces different winners on different runs. This undermines trust. By setting `seed: 42` and `temperature: 0`, the judge produces identical scores for identical inputs — the winner is always the same. Trade-off: slightly less nuanced scoring (zero temperature reduces exploration), but consistency matters more for evaluation.
-
-### Why re-execute instead of just branching?
-
-Branch only patches recorded history — it swaps the model name in existing events but doesn't call the new model. Useful for testing prompt changes against the same cached output. Re-execute actually calls the new model with the same inputs and records fresh responses. This is what you need for real model comparison.
-
-### Why multi-session routing via header?
-
-Multi-agent systems run N agents in parallel. Without routing, all traffic interleaves into one session file and replay breaks. The `X-Session-Id` header lets each agent self-identify. One proxy, one port, N sessions. If no header is sent, falls back to the CLI-specified session ID (backwards compatible).
-
-### Why token tracking at the proxy level?
-
-Ollama includes token counts in every response (`prompt_eval_count`, `eval_count`). We extract and store them per-turn. This means you get cost/performance data without any instrumentation in your agent code — the proxy captures it automatically.
-
-### Why stream chunks are recorded individually?
-
-Streaming responses arrive as NDJSON lines (one token-batch per line). Recording each chunk preserves the exact timing and order the agent experienced. During replay, the same chunks are served back. The agent can't tell the difference between a live stream and a recorded one.
-
-### Why the event store uses async generators?
-
-Sessions can grow large (thousands of stream chunks). Loading everything into memory for every read would blow RAM on big sessions. Async generators (`for await (const event of store.read(...))`) stream events one-by-one with constant memory usage.
-
-### Why CI assertions instead of snapshot testing?
-
-Snapshot testing (exact output match) breaks constantly because LLMs produce slightly different wording each run. Assertions like `contains:async` or `max_latency_ms:5000` are stable — they check properties of the output, not exact text. This makes tests resilient to model upgrades and prompt tweaks.
+| Provider | Format | Detected |
+|---|---|---|
+| OpenAI | `tool_calls` array in response, `tool` role messages | Yes |
+| Anthropic | `tool_use` content blocks, `tool_result` blocks | Yes |
+| Ollama | Same as OpenAI (tool_calls with args as object) | Yes |
+| Plain chat | No tools, just user/assistant messages | Yes |
 
 ## Tests
 
@@ -345,22 +282,14 @@ Snapshot testing (exact output match) breaks constantly because LLMs produce sli
 npm test  # 8 tests (unit + integration)
 ```
 
-Integration tests use local Ollama and skip gracefully when unavailable.
+## Design Decisions
 
-## Roadmap
-
-- [x] Streaming capture and replay
-- [x] Real model re-execution
-- [x] Token/cost tracking
-- [x] CI assertion runner
-- [x] Web playground with diff view
-- [x] Multi-session routing
-- [x] Multi-provider support (Ollama, OpenAI, Anthropic)
-- [x] LLM-as-a-judge scoring (6 criteria)
-- [ ] Batch eval mode (N sessions x M models)
-- [ ] Deterministic judging (seed + multi-run averaging)
-- [ ] Session export as portable test fixtures
-- [ ] Prompt versioning + A/B testing
+- **Proxy over SDK** — works with any language without code changes
+- **JSONL storage** — append-only, streamable, no database dependency
+- **WebSocket for live** — events appear in UI as they happen, not after
+- **Conversation parser** — turns raw HTTP into readable story, handles all major formats
+- **Provider adapters** — isolate API quirks, one interface for all providers
+- **Multi-session via header** — one proxy handles parallel agents
 
 ## License
 

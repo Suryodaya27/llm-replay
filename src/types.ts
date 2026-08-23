@@ -131,25 +131,7 @@ export type ReplayEvent =
 
 // --- Proxy mode ---
 
-export type ProxyMode = 'capture' | 'replay' | 'branch';
-
-// --- Branch patch: what can be modified when forking ---
-
-export interface BranchPatch {
-  system_prompt?: string;
-  model?: string;
-  temperature?: number;
-  inject_error?: {
-    at_seq: number;
-    error: { status: number; body: unknown };
-  };
-  override_tool_result?: {
-    at_seq: number;
-    result: unknown;
-  };
-  /** If true, re-execute remaining turns through Ollama with the new config */
-  re_execute?: boolean;
-}
+export type ProxyMode = 'capture' | 'replay';
 
 // --- Session stats ---
 

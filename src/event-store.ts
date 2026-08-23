@@ -26,9 +26,15 @@ export interface EventStoreOptions {
 
 export class EventStore {
   private readonly dir: string;
+  private _onEvent: ((sessionId: string, event: ReplayEvent) => void) | null = null;
 
   constructor(opts?: EventStoreOptions) {
     this.dir = opts?.storeDir ?? DEFAULT_STORE_DIR;
+  }
+
+  /** Set a listener that fires on every append (for live broadcasting) */
+  set onEvent(fn: ((sessionId: string, event: ReplayEvent) => void) | null) {
+    this._onEvent = fn;
   }
 
   /** Ensure storage directory exists */
@@ -49,7 +55,10 @@ export class EventStore {
       stream.write(line, (err) => {
         stream.end();
         if (err) reject(err);
-        else resolve();
+        else {
+          if (this._onEvent) this._onEvent(sessionId, event);
+          resolve();
+        }
       });
     });
   }

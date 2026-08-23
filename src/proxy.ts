@@ -17,10 +17,9 @@ import { EventStore } from './event-store.js';
 import { RealClock } from './clock.js';
 import { CaptureSession } from './capture.js';
 import { ReplaySession } from './replay.js';
-import { createBranch } from './branch.js';
-import { ProviderRouter, routerConfigFromEnv, defaultRouterConfig } from './providers/index.js';
-import type { Provider, ChatRequest, RouterConfig } from './providers/index.js';
-import type { ProxyMode, BranchPatch } from './types.js';
+import { ProviderRouter, routerConfigFromEnv } from './providers/index.js';
+import type { ChatRequest, RouterConfig } from './providers/index.js';
+import type { ProxyMode, ReplayEvent } from './types.js';
 
 const SESSION_HEADER = 'x-session-id';
 
@@ -31,11 +30,8 @@ export interface ProxyConfig {
   ollamaBaseUrl: string;
   storeDir?: string;
   strict?: boolean;
-  branchAt?: number;
-  patch?: BranchPatch;
-  parentSessionId?: string;
-  /** Provider routing config. If omitted, auto-detects from env vars. */
   routerConfig?: RouterConfig;
+  onEvent?: (sessionId: string, event: ReplayEvent) => void;
 }
 
 export interface ProxyInstance {
@@ -50,6 +46,7 @@ export interface ProxyInstance {
 export async function startProxy(config: ProxyConfig): Promise<ProxyInstance> {
   const store = new EventStore({ storeDir: config.storeDir });
   await store.init();
+  if (config.onEvent) store.onEvent = config.onEvent;
 
   // Build provider router
   const routerCfg = config.routerConfig ?? routerConfigFromEnv();
@@ -62,23 +59,6 @@ export async function startProxy(config: ProxyConfig): Promise<ProxyInstance> {
   // Session pools
   const captureSessions = new Map<string, CaptureSession>();
   const replaySessions = new Map<string, ReplaySession>();
-
-  // Branch setup
-  let branchCaptureSession: CaptureSession | null = null;
-  if (config.mode === 'branch') {
-    if (!config.parentSessionId || config.branchAt === undefined || !config.patch) {
-      throw new Error('Branch mode requires parentSessionId, branchAt, and patch');
-    }
-    const branch = await createBranch({
-      parentSessionId: config.parentSessionId,
-      branchAt: config.branchAt,
-      patch: config.patch,
-      store,
-      ollamaBaseUrl: config.ollamaBaseUrl,
-      newSessionId: config.sessionId,
-    });
-    branchCaptureSession = branch.captureSession;
-  }
 
   function getCaptureSession(sessionId: string): CaptureSession {
     let session = captureSessions.get(sessionId);
@@ -154,22 +134,6 @@ export async function startProxy(config: ProxyConfig): Promise<ProxyInstance> {
             res.writeHead(result.status, result.headers);
           }
           res.end(result.body);
-          break;
-        }
-
-        case 'branch': {
-          if (!branchCaptureSession) {
-            res.writeHead(500, { 'content-type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Branch session not initialized' }));
-            return;
-          }
-          if (isStream) {
-            await branchCaptureSession.proxyStreamToResponse(method, path, headers, body, res);
-          } else {
-            const result = await branchCaptureSession.proxy(method, path, headers, body);
-            res.writeHead(result.status, result.headers);
-            res.end(result.body);
-          }
           break;
         }
       }

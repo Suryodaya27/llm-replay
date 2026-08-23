@@ -573,3 +573,437 @@ body {
     transform: translateX(60%);
   }
 }
+
+
+/* --- Conversation View --- */
+.conversation {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.loading {
+  padding: 80px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.conv-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.conv-title {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-size: 24px;
+}
+
+.conv-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  padding: 16px 20px;
+  background: var(--surface);
+  border-radius: 8px;
+  margin-bottom: 40px;
+}
+
+.conv-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.conv-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+}
+
+.conv-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.conv-outcome-success {
+  color: var(--green);
+}
+
+.conv-outcome-error {
+  color: var(--red);
+}
+
+.conv-outcome-unknown {
+  color: var(--text-dim);
+}
+
+.conv-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.conv-step {
+  padding: 16px 20px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+}
+
+.conv-step-user {
+  background: var(--surface);
+  border-color: var(--border);
+  margin-bottom: 8px;
+}
+
+.conv-step-thinking {
+  padding-left: 32px;
+}
+
+.conv-step-tool_call {
+  padding-left: 32px;
+  background: var(--surface);
+  border-color: var(--border);
+  margin: 4px 0;
+}
+
+.conv-step-tool_result {
+  padding-left: 32px;
+  margin-bottom: 8px;
+}
+
+.conv-step-answer {
+  background: var(--surface);
+  border-color: var(--border);
+  margin-top: 8px;
+}
+
+.conv-step-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.conv-step-icon {
+  font-size: 14px;
+  width: 20px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.conv-step-user .conv-step-icon {
+  color: var(--text);
+}
+
+.conv-step-tool_call .conv-step-icon {
+  color: var(--orange, #b35c00);
+}
+
+.conv-step-answer .conv-step-icon {
+  color: var(--green);
+}
+
+.conv-step-type {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+
+.conv-step-user .conv-step-type {
+  color: var(--text);
+}
+
+.conv-step-answer .conv-step-type {
+  color: var(--green);
+}
+
+.conv-step-tool {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.conv-step-time {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.conv-step-tokens {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 8px;
+}
+
+.conv-step-content {
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+.conv-step-user .conv-step-content {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.conv-step-answer .conv-step-content {
+  color: var(--text);
+}
+
+.conv-code-block {
+  background: var(--surface-2, #ece8e1);
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-family: 'SF Mono', 'Menlo', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 8px 0;
+  overflow-x: auto;
+}
+
+/* Tool call display */
+.tool-call-block {
+  font-family: 'SF Mono', 'Menlo', monospace;
+  font-size: 13px;
+}
+
+.tool-call-name {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.tool-call-args {
+  padding-left: 12px;
+}
+
+.tool-call-arg {
+  margin: 2px 0;
+}
+
+.tool-arg-key {
+  color: var(--text-dim);
+  margin-right: 6px;
+}
+
+.tool-arg-value {
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+
+/* Expandable */
+.tool-expand-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 500;
+  margin-left: 8px;
+}
+
+.tool-expand-hint:hover {
+  color: var(--text-secondary);
+}
+
+
+/* --- Live View --- */
+.live-view {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.live-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.live-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+
+.live-dot-on {
+  background: var(--green);
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
+  animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.live-session-name {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.live-empty {
+  text-align: center;
+  padding: 80px 0;
+  color: var(--text-dim);
+}
+
+.live-empty p {
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+
+.live-empty-hint {
+  font-size: 13px;
+}
+
+.live-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.live-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  animation: fade-in 0.3s ease;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.live-step-user {
+  background: var(--surface);
+}
+
+.live-step-tool_call {
+  background: var(--surface);
+  border-left: 3px solid var(--orange, #b35c00);
+}
+
+.live-step-tool_result {
+  padding-left: 32px;
+}
+
+.live-step-answer {
+  background: var(--surface);
+  border-left: 3px solid var(--green);
+}
+
+.live-step-icon {
+  font-size: 14px;
+  color: var(--text-dim);
+  min-width: 16px;
+  padding-top: 2px;
+}
+
+.live-step-user .live-step-icon {
+  color: var(--text);
+}
+
+.live-step-tool_call .live-step-icon {
+  color: var(--orange, #b35c00);
+}
+
+.live-step-answer .live-step-icon {
+  color: var(--green);
+}
+
+.live-step-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.live-step-type {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  margin-bottom: 2px;
+}
+
+.live-step-content {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.live-step-user .live-step-content {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.live-step-time {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+
+/* --- Nav Tabs --- */
+.nav-tabs {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.nav-tab {
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.nav-tab:hover {
+  color: var(--text);
+}
+
+.nav-tab.active {
+  color: var(--text);
+  background: var(--surface);
+}
