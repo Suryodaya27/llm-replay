@@ -18,6 +18,7 @@ import { startProxy, type ProxyInstance } from './proxy.js';
 import { routerConfigFromEnv } from './providers/index.js';
 import { judgeSessions } from './judge.js';
 import { parseConversation } from './conversation-parser.js';
+import { detectIssues } from './issue-detector.js';
 import { LiveBroadcast } from './live-broadcast.js';
 import type { ReplayEvent, ResponseEvent } from './types.js';
 
@@ -105,7 +106,8 @@ export async function startApiServer(opts?: ApiServerOptions): Promise<{ port: n
         }
         const events = await store.readAll(id);
         const parsed = parseConversation(id, events);
-        json(res, parsed);
+        const issues = detectIssues(parsed);
+        json(res, { ...parsed, issues: issues.issues, healthScore: issues.score });
         return;
       }
 

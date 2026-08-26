@@ -1007,3 +1007,51 @@ body {
   color: var(--text);
   background: var(--surface);
 }
+
+
+/* --- Issues --- */
+.conv-issues {
+  margin-bottom: 32px;
+  padding: 16px 20px;
+  background: #fef9f0;
+  border: 1px solid #f0e4d0;
+  border-radius: 8px;
+}
+
+.conv-issues-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.conv-issues-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.conv-health-score {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.conv-health-score.good { color: var(--green); background: rgba(26,122,76,0.08); }
+.conv-health-score.ok { color: var(--orange); background: rgba(179,92,0,0.08); }
+.conv-health-score.bad { color: var(--red); background: rgba(201,42,42,0.08); }
+
+.conv-issue {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.conv-issue-icon { min-width: 14px; text-align: center; }
+.conv-issue-critical .conv-issue-icon { color: var(--red); }
+.conv-issue-warning .conv-issue-icon { color: var(--orange); }
+.conv-issue-info .conv-issue-icon { color: var(--text-dim); }

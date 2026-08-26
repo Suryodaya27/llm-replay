@@ -17,6 +17,7 @@ import { EventStore } from './event-store.js';
 import { RealClock } from './clock.js';
 import { CaptureSession } from './capture.js';
 import { ReplaySession } from './replay.js';
+import { CircuitBreaker, CircuitOpenError } from './circuit-breaker.js';
 import { ProviderRouter, routerConfigFromEnv } from './providers/index.js';
 import type { ChatRequest, RouterConfig } from './providers/index.js';
 import type { ProxyMode, ReplayEvent } from './types.js';
@@ -40,6 +41,7 @@ export interface ProxyInstance {
   sessionId: string;
   activeSessions: () => string[];
   router: ProviderRouter;
+  circuitBreaker: CircuitBreaker;
   close: () => Promise<void>;
 }
 
@@ -55,6 +57,9 @@ export async function startProxy(config: ProxyConfig): Promise<ProxyInstance> {
     routerCfg.providers.ollama.baseUrl = config.ollamaBaseUrl;
   }
   const router = new ProviderRouter(routerCfg);
+
+  // Resilience layers
+  const circuitBreaker = new CircuitBreaker();
 
   // Session pools
   const captureSessions = new Map<string, CaptureSession>();
@@ -104,14 +109,20 @@ export async function startProxy(config: ProxyConfig): Promise<ProxyInstance> {
         case 'capture': {
           // If request is in OpenAI format and target isn't Ollama, use provider directly
           if (format === 'openai' && model && !isOllamaModel(model, router)) {
-            await handleProviderCapture(sessionId, model, body, isStream, store, router, res);
+            await circuitBreaker.execute(() =>
+              handleProviderCapture(sessionId, model!, body, isStream, store, router, res)
+            );
           } else {
-            // Default: forward to Ollama via CaptureSession (existing behavior)
+            // Default: forward to Ollama via CaptureSession
             const session = getCaptureSession(sessionId);
             if (isStream) {
-              await session.proxyStreamToResponse(method, path, headers, body, res);
+              await circuitBreaker.execute(() =>
+                session.proxyStreamToResponse(method, path, headers, body, res)
+              );
             } else {
-              const result = await session.proxy(method, path, headers, body);
+              const result = await circuitBreaker.execute(() =>
+                session.proxy(method, path, headers, body)
+              );
               res.writeHead(result.status, result.headers);
               res.end(result.body);
             }
@@ -138,6 +149,11 @@ export async function startProxy(config: ProxyConfig): Promise<ProxyInstance> {
         }
       }
     } catch (err) {
+      if (err instanceof CircuitOpenError) {
+        res.writeHead(503, { 'content-type': 'application/json', 'retry-after': String(Math.ceil(err.retryAfterMs / 1000)) });
+        res.end(JSON.stringify({ error: 'circuit_open', message: err.message, retry_after_ms: err.retryAfterMs }));
+        return;
+      }
       const message = err instanceof Error ? err.message : 'Internal proxy error';
       res.writeHead(502, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: 'proxy_error', message }));
@@ -153,6 +169,7 @@ export async function startProxy(config: ProxyConfig): Promise<ProxyInstance> {
         sessionId: config.sessionId,
         activeSessions: () => [...captureSessions.keys(), ...replaySessions.keys()],
         router,
+        circuitBreaker,
         close: () => new Promise((r) => server.close(() => r())),
       });
     });

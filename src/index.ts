@@ -4,6 +4,7 @@ export { RealClock, VirtualClock } from './clock.js';
 export { CaptureSession } from './capture.js';
 export { ReplaySession } from './replay.js';
 export { startProxy } from './proxy.js';
+export { CircuitBreaker, CircuitOpenError } from './circuit-breaker.js';
 export { startApiServer } from './api-server.js';
 export { getSessionStats } from './stats.js';
 export { runTest, parseAssertionString } from './test-runner.js';

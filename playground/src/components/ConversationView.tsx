@@ -17,6 +17,13 @@ interface ConversationStep {
   };
 }
 
+interface Issue {
+  severity: 'critical' | 'warning' | 'info';
+  type: string;
+  message: string;
+  steps: number[];
+}
+
 interface ParsedSession {
   session_id: string;
   model: string;
@@ -30,6 +37,8 @@ interface ParsedSession {
     outcome: string;
     one_liner: string;
   };
+  issues?: Issue[];
+  healthScore?: number;
 }
 
 interface Props {
@@ -93,6 +102,30 @@ export default function ConversationView({ sessionId, onBack }: Props) {
           </span>
         </div>
       </div>
+
+      {/* Issues */}
+      {data.issues && data.issues.length > 0 && (
+        <div className="conv-issues">
+          <div className="conv-issues-header">
+            <span className="conv-issues-title">
+              {data.issues.length} {data.issues.length === 1 ? 'issue' : 'issues'} detected
+            </span>
+            {data.healthScore !== undefined && (
+              <span className={`conv-health-score ${data.healthScore >= 80 ? 'good' : data.healthScore >= 50 ? 'ok' : 'bad'}`}>
+                Health: {data.healthScore}/100
+              </span>
+            )}
+          </div>
+          {data.issues.map((issue, i) => (
+            <div key={i} className={`conv-issue conv-issue-${issue.severity}`}>
+              <span className="conv-issue-icon">
+                {issue.severity === 'critical' ? '●' : issue.severity === 'warning' ? '▲' : 'ℹ'}
+              </span>
+              <span className="conv-issue-message">{issue.message}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Steps */}
       <div className="conv-steps">
