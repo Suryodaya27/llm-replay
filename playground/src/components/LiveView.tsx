@@ -40,11 +40,11 @@ export default function LiveView() {
 
       if (msg.type === 'event') {
         const event = msg.event;
-        const step = eventToStep(msg.session_id, event);
-        if (step) {
+        const result = eventToStep(msg.session_id, event);
+        if (result) {
+          const newSteps = Array.isArray(result) ? result : [result];
           setSteps((prev) => {
-            const updated = [...prev, step];
-            // Normalize times: subtract first event's time so it starts at 0
+            const updated = [...prev, ...newSteps];
             if (updated.length > 0) {
               const firstTime = updated[0].time;
               return updated.map(s => ({ ...s, time: s.time - firstTime }));
@@ -101,7 +101,7 @@ export default function LiveView() {
   );
 }
 
-function eventToStep(sessionId: string, event: { seq: number; t: number; type: string; data: unknown }): LiveStep | null {
+function eventToStep(sessionId: string, event: { seq: number; t: number; type: string; data: unknown }): LiveStep | LiveStep[] | null {
   const data = event.data as Record<string, unknown>;
 
   switch (event.type) {
@@ -111,16 +111,35 @@ function eventToStep(sessionId: string, event: { seq: number; t: number; type: s
     case 'request': {
       const body = data.body as Record<string, unknown> | undefined;
       const messages = body?.messages as Array<Record<string, unknown>> | undefined;
-      const last = messages?.[messages.length - 1];
-      if (!last) return null;
+      if (!messages) return null;
 
-      if (last.role === 'tool') {
-        const content = (last.content as string) ?? '';
-        return { id: `${sessionId}-${event.seq}`, session_id: sessionId, type: 'tool_result', content: content.slice(0, 200), time: event.t };
+      // Check if this is the first user message
+      if (messages.length <= 2 && messages[messages.length - 1]?.role === 'user') {
+        const content = (messages[messages.length - 1].content as string) ?? '';
+        return { id: `${sessionId}-${event.seq}`, session_id: sessionId, type: 'user', content, time: event.t };
       }
-      if (last.role === 'user' && messages!.length <= 2) {
-        return { id: `${sessionId}-${event.seq}`, session_id: sessionId, type: 'user', content: (last.content as string) ?? '', time: event.t };
+
+      // Find tool results that come AFTER the last assistant message (these are new)
+      let lastAssistantIdx = -1;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'assistant') { lastAssistantIdx = i; break; }
       }
+
+      const newToolResults: LiveStep[] = [];
+      for (let i = lastAssistantIdx + 1; i < messages.length; i++) {
+        const msg = messages[i];
+        if (msg.role === 'tool') {
+          const content = (msg.content as string) ?? '';
+          newToolResults.push({
+            id: `${sessionId}-${event.seq}-tr${i}`,
+            session_id: sessionId,
+            type: 'tool_result',
+            content: content.slice(0, 200),
+            time: event.t,
+          });
+        }
+      }
+      if (newToolResults.length > 0) return newToolResults;
       return null;
     }
 
@@ -131,15 +150,25 @@ function eventToStep(sessionId: string, event: { seq: number; t: number; type: s
 
       const toolCalls = msg.tool_calls as Array<Record<string, unknown>> | undefined;
       if (toolCalls && toolCalls.length > 0) {
-        const names = toolCalls.map(tc => {
+        // Return multiple steps for multiple tool calls
+        return toolCalls.map((tc, i) => {
           const fn = tc.function as Record<string, unknown>;
-          return fn?.name as string ?? 'unknown';
+          const name = (fn?.name as string) ?? 'unknown';
+          const args = typeof fn?.arguments === 'string'
+            ? fn.arguments
+            : JSON.stringify(fn?.arguments ?? {});
+          return {
+            id: `${sessionId}-${event.seq}-tc${i}`,
+            session_id: sessionId,
+            type: 'tool_call',
+            content: `${name}(${args})`,
+            time: event.t,
+          };
         });
-        return { id: `${sessionId}-${event.seq}`, session_id: sessionId, type: 'tool_call', content: names.join(', '), time: event.t };
       }
 
       const content = (msg.content as string) ?? '';
-      return { id: `${sessionId}-${event.seq}`, session_id: sessionId, type: 'answer', content: content.slice(0, 300), time: event.t };
+      return [{ id: `${sessionId}-${event.seq}`, session_id: sessionId, type: 'answer', content: content.slice(0, 300), time: event.t }];
     }
 
     case 'stream_end': {
