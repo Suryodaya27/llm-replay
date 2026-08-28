@@ -96,6 +96,14 @@ The **Live** tab shows events streaming in real-time. The **Sessions** tab shows
 | **CI Assertions** | `test --assert "contains:X"` — exit 0/1 |
 | **Language Agnostic** | Works with any language via HTTP |
 
+## Screenshots
+
+| Screenshot | Description |
+|---|---|
+| ![Inspector](screenshots/inspector.png) | Session inspector showing detected errors and issue analysis |
+| ![Live](screenshots/live.png) | Live tab showing real-time WebSocket event output |
+| ![Sessions](screenshots/sessions.png) | Sessions tab listing all captured agent sessions |
+
 ## Requirements
 
 - Node.js >= 20
