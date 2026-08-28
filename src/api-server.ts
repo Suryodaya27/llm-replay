@@ -35,6 +35,8 @@ export async function startApiServer(opts?: ApiServerOptions): Promise<{ port: n
   await store.init();
 
   let activeProxy: ProxyInstance | null = null;
+  let broadcast: LiveBroadcast | null = null;
+  let hookBroadcastEnabled = false; // off by default — enable via API
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     // CORS
@@ -244,6 +246,81 @@ export async function startApiServer(opts?: ApiServerOptions): Promise<{ port: n
         return;
       }
 
+      // Hook status check (used by Kiro hook to decide whether to broadcast)
+      if (path === '/api/hook/status' && req.method === 'GET') {
+        json(res, { active: hookBroadcastEnabled });
+        return;
+      }
+
+      // Toggle hook broadcasting on/off
+      if (path === '/api/hook/toggle' && req.method === 'POST') {
+        hookBroadcastEnabled = !hookBroadcastEnabled;
+        json(res, { active: hookBroadcastEnabled });
+        return;
+      }
+
+      // Enable hook broadcasting
+      if (path === '/api/hook/enable' && req.method === 'POST') {
+        hookBroadcastEnabled = true;
+        json(res, { active: true });
+        return;
+      }
+
+      // Disable hook broadcasting
+      if (path === '/api/hook/disable' && req.method === 'POST') {
+        hookBroadcastEnabled = false;
+        json(res, { active: false });
+        return;
+      }
+
+      // Receive hook events (from Kiro hooks, MCP, etc.)
+      if (path === '/api/hook/event' && req.method === 'POST') {
+        if (!hookBroadcastEnabled) {
+          json(res, { received: false, reason: 'broadcasting disabled' });
+          return;
+        }
+        const body = await readBody(req);
+        try {
+          const hookData = JSON.parse(body);
+          if (broadcast) {
+            // Determine event type from hook data
+            let eventType = 'user';
+            let content = '';
+
+            if (hookData.toolName) {
+              eventType = 'tool_call';
+              content = hookData.toolName;
+            } else if (hookData.hook_event_name === 'Stop') {
+              eventType = 'session';
+              content = 'Agent finished';
+            } else if (hookData.hook_event_name === 'UserPromptSubmit') {
+              eventType = 'user';
+              content = hookData.userPrompt ?? hookData.prompt ?? hookData.content ?? '';
+            } else if (hookData.userPrompt || hookData.prompt) {
+              eventType = 'user';
+              content = hookData.userPrompt ?? hookData.prompt ?? '';
+            } else {
+              eventType = 'session';
+              content = hookData.hook_event_name ?? JSON.stringify(hookData).slice(0, 200);
+            }
+
+            broadcast.emit({
+              session_id: 'kiro-live',
+              event: {
+                seq: Date.now(),
+                t: 0, // will be normalized by LiveView
+                type: eventType,
+                data: { content, raw: hookData },
+              },
+            });
+          }
+          json(res, { received: true });
+        } catch {
+          json(res, { error: 'Invalid JSON' }, 400);
+        }
+        return;
+      }
+
       // 404
       json(res, { error: 'Not found', path }, 404);
     } catch (err) {
@@ -254,7 +331,7 @@ export async function startApiServer(opts?: ApiServerOptions): Promise<{ port: n
 
   return new Promise((resolve) => {
     server.listen(port, () => {
-      const broadcast = new LiveBroadcast(server);
+      broadcast = new LiveBroadcast(server);
       resolve({
         port,
         broadcast,

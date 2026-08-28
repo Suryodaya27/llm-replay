@@ -108,6 +108,23 @@ function eventToStep(sessionId: string, event: { seq: number; t: number; type: s
     case 'meta':
       return { id: `${sessionId}-${event.seq}`, session_id: sessionId, type: 'session', content: `Session started · ${(data.model as string) ?? 'unknown model'}`, time: event.t };
 
+    case 'tool_call': {
+      // From hooks — data contains tool info directly
+      const content = (data.content as string) ?? (data.toolName as string) ?? (data.name as string) ?? JSON.stringify(data).slice(0, 150);
+      return { id: `${sessionId}-${event.seq}`, session_id: sessionId, type: 'tool_call', content, time: event.t };
+    }
+
+    case 'user': {
+      // From hooks — user prompt
+      const content = (data.content as string) ?? (data.userPrompt as string) ?? (data.prompt as string) ?? JSON.stringify(data).slice(0, 150);
+      return { id: `${sessionId}-${event.seq}`, session_id: sessionId, type: 'user', content, time: event.t };
+    }
+
+    case 'session': {
+      const content = (data.content as string) ?? 'Session event';
+      return { id: `${sessionId}-${event.seq}`, session_id: sessionId, type: 'session', content, time: event.t };
+    }
+
     case 'request': {
       const body = data.body as Record<string, unknown> | undefined;
       const messages = body?.messages as Array<Record<string, unknown>> | undefined;
@@ -176,8 +193,11 @@ function eventToStep(sessionId: string, event: { seq: number; t: number; type: s
       return { id: `${sessionId}-${event.seq}`, session_id: sessionId, type: 'answer', content: content.slice(0, 300), time: event.t };
     }
 
-    default:
-      return null;
+    default: {
+      // Handle any unknown event type (hooks, custom events)
+      const content = typeof data === 'object' ? JSON.stringify(data).slice(0, 200) : String(data);
+      return { id: `${sessionId}-${event.seq}`, session_id: sessionId, type: event.type, content, time: event.t };
+    }
   }
 }
 
