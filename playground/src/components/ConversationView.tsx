@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-const BASE = 'http://localhost:3001';
+const BASE = '';
 
 interface ConversationStep {
   type: 'user' | 'thinking' | 'tool_call' | 'tool_result' | 'answer' | 'error';

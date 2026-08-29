@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 
-const WS_URL = 'ws://localhost:3001/ws';
+const WS_URL = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
 
 interface LiveStep {
   id: string;

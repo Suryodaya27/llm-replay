@@ -1,6 +1,6 @@
 /** API client for the replay engine backend */
 
-const BASE = 'http://localhost:3001';
+const BASE = '';
 
 export interface SessionMeta {
   session_id: string;
