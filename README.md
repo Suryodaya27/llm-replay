@@ -113,7 +113,7 @@ The **Live** tab shows events streaming in real-time. The **Sessions** tab shows
 ## Install
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/Suryodaya27/llm-replay
 cd llm-replay
 npm install
 npm run build
@@ -173,52 +173,3 @@ npm link  # optional: global command
 | **Observer** | `store.onEvent` callback | Decouples recording from broadcasting — proxy doesn't know about WebSocket |
 | **Discriminated Union** | Event types | TypeScript narrows event shape by `type` field at compile time |
 | **Iterator (Async Generator)** | `store.read()` | Streams events without loading entire session into memory |
-
-## Project Structure
-
-```
-llm-replay/
-├── src/
-│   ├── proxy.ts               # Capture proxy + circuit breaker
-│   ├── circuit-breaker.ts     # Resilience: fast failure + auto-recovery
-│   ├── issue-detector.ts      # Post-session analysis (loops, errors, waste)
-│   ├── conversation-parser.ts # Extracts tool calls from raw HTTP
-│   ├── live-broadcast.ts      # WebSocket event broadcasting
-│   ├── api-server.ts          # REST API + WebSocket server
-│   ├── event-store.ts         # JSONL persistence with live listener
-│   ├── capture.ts             # HTTP interception + recording
-│   ├── replay.ts              # Cached response serving
-│   ├── stats.ts               # Token/latency extraction
-│   ├── test-runner.ts         # CI assertion engine
-│   ├── judge.ts               # LLM-as-a-judge scoring
-│   ├── clock.ts               # Real + Virtual clock
-│   ├── cli.ts                 # All CLI commands
-│   ├── types.ts               # Event types
-│   ├── index.ts               # Public API
-│   └── providers/
-│       ├── ollama.ts          # Ollama adapter
-│       ├── openai.ts          # OpenAI adapter
-│       ├── anthropic.ts       # Anthropic adapter
-│       ├── router.ts          # Model → provider routing
-│       └── types.ts           # Provider interface
-├── playground/                # React web UI
-│   └── src/
-│       ├── App.tsx            # Live + Sessions tabs
-│       └── components/
-│           ├── LiveView.tsx         # Real-time event stream
-│           ├── ConversationView.tsx # Session inspector + issues
-│           ├── SessionList.tsx      # Session browser
-│           └── DiffView.tsx         # Side-by-side comparison
-├── package.json
-└── tsconfig.json
-```
-
-## Tests
-
-```bash
-npm test  # 7 tests (unit + integration)
-```
-
-## License
-
-MIT
