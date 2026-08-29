@@ -3,8 +3,7 @@
  *
  * Routing logic:
  * 1. Check explicit routes (model prefix → provider)
- * 2. Check provider model lists
- * 3. Fall back to default provider
+ * 2. Fall back to default provider
  *
  * Config example:
  * {
@@ -57,11 +56,6 @@ export class ProviderRouter {
         const provider = this.providers.get(route.providerName);
         if (provider) return provider;
       }
-    }
-
-    // Check provider model lists
-    for (const [, provider] of this.providers) {
-      // Provider-specific model matching handled by the provider itself
     }
 
     // Fall back to default

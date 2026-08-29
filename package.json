@@ -1,6 +1,6 @@
 {
   "name": "llm-replay",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Deterministic replay engine for AI agents — capture, replay, branch, and test LLM sessions across Ollama, OpenAI, and Anthropic",
   "type": "module",
   "main": "./dist/index.js",

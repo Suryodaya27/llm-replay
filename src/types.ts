@@ -163,8 +163,7 @@ export type AssertionType =
   | 'matches_regex'
   | 'json_valid'
   | 'max_tokens'
-  | 'max_latency_ms'
-  | 'custom';
+  | 'max_latency_ms';
 
 export interface Assertion {
   type: AssertionType;
