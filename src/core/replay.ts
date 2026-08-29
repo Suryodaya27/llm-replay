@@ -20,7 +20,7 @@
 
 import { VirtualClock } from './clock.js';
 import { EventStore } from './event-store.js';
-import type { RequestEvent, ResponseEvent, StreamChunkEvent, StreamEndEvent, ReplayEvent } from './types.js';
+import type { RequestEvent, ResponseEvent, StreamChunkEvent, StreamEndEvent, ReplayEvent } from '../types.js';
 
 export interface ReplayOptions {
   sessionId: string;

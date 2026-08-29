@@ -7,8 +7,8 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { startProxy, type ProxyInstance } from './proxy.js';
-import { EventStore } from './event-store.js';
+import { startProxy, type ProxyInstance } from '../server/proxy.js';
+import { EventStore } from '../core/event-store.js';
 
 const OLLAMA_URL = 'http://localhost:11434';
 const MODEL = 'minicpm-v4.6:latest';

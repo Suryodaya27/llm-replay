@@ -16,7 +16,7 @@ import { mkdir, stat, readdir, unlink } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import type { ReplayEvent, SessionMeta } from './types.js';
+import type { ReplayEvent, SessionMeta } from '../types.js';
 
 const DEFAULT_STORE_DIR = join(homedir(), '.llm-replay', 'sessions');
 

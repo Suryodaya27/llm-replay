@@ -5,13 +5,18 @@
 
 import { Command } from 'commander';
 import { readFile } from 'node:fs/promises';
-import { startProxy } from './proxy.js';
-import { startApiServer } from './api-server.js';
-import { EventStore } from './event-store.js';
-import { getSessionStats } from './stats.js';
-import { runTest, parseAssertionString } from './test-runner.js';
-import { judgeSessions } from './judge.js';
+import { resolve, dirname } from 'node:path';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { startProxy } from './server/proxy.js';
+import { startApiServer } from './server/api-server.js';
+import { EventStore } from './core/event-store.js';
+import { getSessionStats } from './analysis/stats.js';
+import { runTest, parseAssertionString } from './analysis/test-runner.js';
+import { judgeSessions } from './analysis/judge.js';
 import type { Assertion } from './types.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const DEFAULT_PORT = 11435;
 const DEFAULT_OLLAMA = 'http://localhost:11434';
@@ -28,27 +33,42 @@ program
   .command('ui')
   .description('Start the dashboard (API server + capture proxy + live WebSocket)')
   .option('-p, --port <port>', 'API server port', '3001')
+  .option('-s, --session <id>', 'Session name (default: auto-generated)')
   .option('-o, --ollama <url>', 'Ollama base URL', DEFAULT_OLLAMA)
   .option('-d, --store-dir <dir>', 'Session storage directory')
   .action(async (opts) => {
-    const server = await startApiServer({ port: Number(opts.port), storeDir: opts.storeDir });
+    // Resolve playground build dir (relative to package root, not cwd)
+    const playgroundDir = resolve(__dirname, '..', 'playground', 'dist');
+    const hasPlayground = existsSync(playgroundDir);
+
+    const server = await startApiServer({
+      port: Number(opts.port),
+      storeDir: opts.storeDir,
+      playgroundDir: hasPlayground ? playgroundDir : undefined,
+    });
     console.log(`[ui] API server running at http://localhost:${server.port}`);
     console.log(`[ui] WebSocket at ws://localhost:${server.port}/ws`);
 
     const proxyPort = DEFAULT_PORT;
+    const sessionId = opts.session ?? `live-${Date.now()}`;
     const captureProxy = await startProxy({
       port: proxyPort,
       mode: 'capture',
-      sessionId: `live-${Date.now()}`,
+      sessionId,
       ollamaBaseUrl: opts.ollama,
       storeDir: opts.storeDir,
-      onEvent: (sessionId, event) => {
+      onEvent: (sessionId: string, event: { seq: number; t: number; type: string; data: unknown }) => {
         server.broadcast.emit({ session_id: sessionId, event });
       },
     });
 
-    console.log(`[ui] Capture proxy on :${proxyPort} (live broadcast enabled)`);
-    console.log(`[ui] Playground at http://localhost:5173`);
+    console.log(`[ui] Capture proxy on :${proxyPort} → session "${sessionId}"`);
+    if (hasPlayground) {
+      console.log(`[ui] Dashboard at http://localhost:${server.port}`);
+    } else {
+      console.log(`[ui] No playground build found. Run: cd playground && npm run build`);
+      console.log(`[ui] Or use Vite dev server: cd playground && npm run dev`);
+    }
     console.log(`[ui] Press Ctrl+C to stop`);
 
     process.on('SIGINT', () => {

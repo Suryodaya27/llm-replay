@@ -7,9 +7,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { EventStore } from './event-store.js';
-import { ReplaySession } from './replay.js';
-import type { ReplayEvent } from './types.js';
+import { EventStore } from '../core/event-store.js';
+import { ReplaySession } from '../core/replay.js';
+import type { ReplayEvent } from '../types.js';
 
 describe('EventStore + ReplaySession', () => {
   let dir: string;
