@@ -17,14 +17,19 @@ No SDK. No code changes. One URL change.
 ```bash
 git clone https://github.com/Suryodaya27/llm-replay
 cd llm-replay
-npm install && npm run build
+
+# Install and build backend
+npm install
+npm run build
+
+# Install and build dashboard
 cd playground && npm install && npm run build && cd ..
 
+# Start everything
 node dist/cli.js ui
-# Open http://localhost:3001
 ```
 
-One command starts everything: API server, capture proxy, and dashboard on a single port.
+Open http://localhost:3001 — dashboard, API, and WebSocket all on one port.
 
 ```bash
 # Name your session
