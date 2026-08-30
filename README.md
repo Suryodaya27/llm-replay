@@ -7,7 +7,11 @@ A transparent HTTP proxy that captures AI agent sessions, shows you the full dec
 ```
 Any AI Agent (Python/JS/Go/anything) → proxy (:11435) → LLM Provider
                                             ↓
-                              Live Dashboard + Issue Detection
+                            Dashboard (:3001)
+                            ├─ Live event stream
+                            ├─ Issue detection
+                            ├─ "What if?" branching
+                            └─ Session comparison
 ```
 
 No SDK. No code changes. One URL change.
@@ -43,6 +47,16 @@ curl http://localhost:11435/api/chat -d '{
 }'
 ```
 
+The **Live** tab shows events streaming in real-time. The **Sessions** tab shows recorded sessions with issue detection.
+
+## What it captures
+
+Every LLM interaction is recorded with full fidelity:
+- **Requests and responses** — complete message history, model parameters
+- **Tool/function calls** — name, arguments, and results for each invocation
+- **Streaming chunks** — individual tokens as they arrive, assembled into full responses
+- **Token usage and latency** — per-turn metrics across all providers
+
 ## What it catches
 
 The proxy doesn't just record — it analyzes. After each session:
@@ -62,6 +76,20 @@ The proxy doesn't just record — it analyzes. After each session:
 - **Ignored errors** — tool returned an error, agent continued as if nothing happened
 - **Token waste** — duplicate reasoning steps
 - **No final answer** — agent hit max iterations without completing
+
+## "What if?" Branching
+
+Edit any step in a recorded session and re-run from that point with the real LLM.
+
+```
+Original:  User: "Capital of France?" → LLM: "Paris"
+                     ↓ edit to "Capital of India?"
+Branch:    User: "Capital of India?" → LLM: "New Delhi"
+```
+
+Works on every step type: user messages, LLM responses, tool calls, tool results. For multi-turn sessions with tool calls, the branch loops automatically — if the LLM makes tool calls, recorded tool results from the original session are fed back, and the LLM continues until it reaches a final answer.
+
+Click **"What if?"** on any step in the session inspector to try it.
 
 ## Usage with OpenAI / Anthropic
 
@@ -103,11 +131,14 @@ client = anthropic.Anthropic(base_url="http://localhost:11435")
 |---|---|
 | **Live Dashboard** | Watch agent events stream in real-time via WebSocket |
 | **Issue Detection** | Automatically flags loops, errors, token waste |
+| **What-if Branching** | Edit any step and re-run from that point with the real LLM |
 | **Circuit Breaker** | Fast failure when LLM providers are down, auto-recovery |
 | **Session Inspector** | Readable conversation flow with expandable tool I/O |
 | **Multi-Provider** | Routes to Ollama, OpenAI, Anthropic by model name |
 | **Token Tracking** | Tokens + latency per step, automatic (all providers) |
+| **Session Compare** | Side-by-side summary: tokens, latency, health, outcome |
 | **CI Assertions** | `test --assert "contains:X"` — exit 0/1 |
+| **Replay** | Serve recorded LLM responses for deterministic agent testing |
 | **Named Sessions** | `ui --session my-run` for organized capture |
 
 ## Screenshots
@@ -115,6 +146,8 @@ client = anthropic.Anthropic(base_url="http://localhost:11435")
 | Screenshot | Description |
 |---|---|
 | ![Inspector](screenshots/inspector.png) | Session inspector showing detected errors and issue analysis |
+| ![Branch](screenshots/branch.png) | What-if branching — edit a step and see the new LLM response |
+| ![Compare](screenshots/compare.png) | Side-by-side session comparison: tokens, latency, health |
 | ![Live](screenshots/live.png) | Live tab showing real-time WebSocket event output |
 | ![Sessions](screenshots/sessions.png) | Sessions tab listing all captured agent sessions |
 
@@ -134,7 +167,6 @@ client = anthropic.Anthropic(base_url="http://localhost:11435")
 | `replay --session <id>` | Serve recorded responses (for testing without LLM) |
 | `stats --session <id>` | Token/latency breakdown |
 | `test --session <id>` | CI assertions against sessions |
-| `judge` | AI-score comparison between two sessions |
 | `ls` | List sessions |
 | `inspect --session <id>` | View raw events |
 | `rm --session <id>` | Delete session |
@@ -144,11 +176,10 @@ client = anthropic.Anthropic(base_url="http://localhost:11435")
 ```
 ┌─────────────────────────────────────────────────┐
 │           Dashboard (:3001)                     │
-│     Live Tab (WebSocket) │ Sessions Tab         │
-│                          │ Issue Detection       │
-├──────────────────────────┴──────────────────────┤
+│  Live Tab │ Sessions Tab │ What-if Branching    │
+├─────────────────────────────────────────────────┤
 │           API Server (:3001)                    │
-│  /ws │ /api/sessions │ /api/conversation        │
+│  /ws │ /api/sessions │ /api/branch │ /api/compare │
 │  Static files (playground/dist)                 │
 └───────────────────────┬─────────────────────────┘
                         │
@@ -179,6 +210,7 @@ src/
     event-store.ts      # Append-only JSONL persistence
     capture.ts          # HTTP traffic recording
     replay.ts           # Serve recorded responses
+    branch.ts           # What-if branching (edit + re-run)
     clock.ts            # Real + virtual clocks
     circuit-breaker.ts  # Resilience state machine
 
@@ -191,7 +223,6 @@ src/
     conversation-parser.ts  # Raw events → conversation timeline
     issue-detector.ts       # Automatic issue detection + scoring
     stats.ts                # Token/latency statistics
-    judge.ts                # LLM-as-a-judge scoring
     test-runner.ts          # CI assertion runner
 
   providers/            # LLM provider adapters
