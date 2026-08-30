@@ -33,20 +33,6 @@ export interface OllamaModel {
   provider?: string;
 }
 
-export interface DiffTurn {
-  turnIndex: number;
-  session1: { session: string; index: number; request: { role: string; content: string; model?: string }; response: { content: string; duration_ms: number } } | null;
-  session2: { session: string; index: number; request: { role: string; content: string; model?: string }; response: { content: string; duration_ms: number } } | null;
-  differs: boolean;
-}
-
-export interface DiffResult {
-  session1: string;
-  session2: string;
-  totalTurns: number;
-  comparisons: DiffTurn[];
-}
-
 export async function fetchSessions(): Promise<SessionSummary[]> {
   const res = await fetch(`${BASE}/api/sessions`);
   return res.json();
@@ -66,12 +52,29 @@ export async function fetchModels(): Promise<OllamaModel[]> {
   return res.json();
 }
 
-export async function createBranch(parentSessionId: string, branchAt: number, patch: Record<string, unknown>, newSessionId?: string): Promise<{ sessionId: string; eventsKept: number; patchesApplied: string[] }> {
+export interface BranchResult {
+  sessionId: string;
+  parentSessionId: string;
+  branchAtStep: number;
+  originalContent: string;
+  editedContent: string;
+  newSteps: Array<{ role: string; content: string }>;
+  newResponse: string;
+  totalTokens: number;
+  turns: number;
+  durationMs: number;
+}
+
+export async function createBranch(sessionId: string, stepIndex: number, editedContent: string, newSessionId?: string): Promise<BranchResult> {
   const res = await fetch(`${BASE}/api/branch`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ parentSessionId, branchAt, patch, newSessionId }),
+    body: JSON.stringify({ sessionId, stepIndex, editedContent, newSessionId }),
   });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error ?? 'Branch failed');
+  }
   return res.json();
 }
 
@@ -84,8 +87,32 @@ export async function reExecute(parentSessionId: string, patch: Record<string, u
   return res.json();
 }
 
-export async function fetchDiff(id1: string, id2: string): Promise<DiffResult> {
-  const res = await fetch(`${BASE}/api/diff/${encodeURIComponent(id1)}/${encodeURIComponent(id2)}`);
+export interface SessionCompareSummary {
+  sessionId: string;
+  model: string;
+  outcome: string;
+  finalAnswer: string | null;
+  totalTokens: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTurns: number;
+  avgLatencyMs: number;
+  totalDurationMs: number;
+  toolCalls: number;
+  toolsUsed: string[];
+  healthScore: number;
+  issueCount: number;
+  issues: Array<{ severity: string; type: string; message: string }>;
+  totalSteps: number;
+}
+
+export interface CompareResult {
+  session1: SessionCompareSummary;
+  session2: SessionCompareSummary;
+}
+
+export async function fetchCompare(id1: string, id2: string): Promise<CompareResult> {
+  const res = await fetch(`${BASE}/api/compare/${encodeURIComponent(id1)}/${encodeURIComponent(id2)}`);
   return res.json();
 }
 
@@ -111,48 +138,7 @@ export interface ProviderInfo {
   routes: string[];
 }
 
-export interface JudgeScore {
-  accuracy: number;
-  completeness: number;
-  conciseness: number;
-  safety: number;
-  relevance: number;
-  coherence: number;
-  total: number;
-}
-
-export interface TurnJudgment {
-  turnIndex: number;
-  question: string;
-  scoreA: JudgeScore;
-  scoreB: JudgeScore;
-  winner: 'a' | 'b' | 'tie';
-  reason: string;
-}
-
-export interface JudgeResult {
-  sessionA: string;
-  sessionB: string;
-  judgeModel: string;
-  turns: TurnJudgment[];
-  overall: {
-    winner: 'a' | 'b' | 'tie';
-    scoreA: number;
-    scoreB: number;
-    summary: string;
-  };
-}
-
 export async function fetchProviders(): Promise<ProviderInfo[]> {
   const res = await fetch(`${BASE}/api/providers`);
-  return res.json();
-}
-
-export async function judgeCompare(session1: string, session2: string, judgeModel?: string): Promise<JudgeResult> {
-  const res = await fetch(`${BASE}/api/judge`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ session1, session2, judgeModel }),
-  });
   return res.json();
 }

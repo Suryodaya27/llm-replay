@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createBranch, type BranchResult } from '../api';
 
 const BASE = '';
 
@@ -44,11 +45,17 @@ interface ParsedSession {
 interface Props {
   sessionId: string;
   onBack: () => void;
+  onOpenSession?: (id: string) => void;
 }
 
-export default function ConversationView({ sessionId, onBack }: Props) {
+export default function ConversationView({ sessionId, onBack, onOpenSession }: Props) {
   const [data, setData] = useState<ParsedSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editingStep, setEditingStep] = useState<number | null>(null);
+  const [editText, setEditText] = useState('');
+  const [branching, setBranching] = useState(false);
+  const [branchResult, setBranchResult] = useState<BranchResult | null>(null);
+  const [branchError, setBranchError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -57,6 +64,32 @@ export default function ConversationView({ sessionId, onBack }: Props) {
       .then(setData)
       .finally(() => setLoading(false));
   }, [sessionId]);
+
+  const startEdit = (step: ConversationStep) => {
+    setEditingStep(step.index);
+    setEditText(step.content);
+    setBranchResult(null);
+    setBranchError(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingStep(null);
+    setEditText('');
+  };
+
+  const submitBranch = async () => {
+    if (editingStep === null) return;
+    setBranching(true);
+    setBranchError(null);
+    try {
+      const result = await createBranch(sessionId, editingStep, editText);
+      setBranchResult(result);
+      setEditingStep(null);
+    } catch (err) {
+      setBranchError(err instanceof Error ? err.message : 'Branch failed');
+    }
+    setBranching(false);
+  };
 
   if (loading) return <div className="loading">Loading session...</div>;
   if (!data) return <div>Failed to load session.</div>;
@@ -127,38 +160,125 @@ export default function ConversationView({ sessionId, onBack }: Props) {
         </div>
       )}
 
+      {branchError && (
+        <div className="conv-branch-error">
+          Branch failed: {branchError}
+        </div>
+      )}
+
       {/* Steps */}
       <div className="conv-steps">
-        {data.steps.map((step) => (
-          <div key={step.index} className={`conv-step conv-step-${step.type}`}>
-            <div className="conv-step-header">
-              <span className="conv-step-icon">{stepIcon(step.type)}</span>
-              <span className="conv-step-type">{stepLabel(step.type)}</span>
-              {step.meta?.tool_name && (
-                <span className="conv-step-tool">{step.meta.tool_name}</span>
-              )}
-              <span className="conv-step-time">
-                {step.meta?.latency_ms ? formatTime(step.meta.latency_ms) : ''}
-              </span>
-            </div>
-            <div className="conv-step-content">
-              {step.type === 'tool_call' ? (
-                <ToolCallContent step={step} />
-              ) : step.type === 'tool_result' ? (
-                <ExpandableContent text={step.content} label="output" preformatted />
-              ) : step.type === 'thinking' && step.content.length > 200 ? (
-                <ExpandableContent text={step.content} label="reasoning" />
-              ) : (
-                <TextContent text={step.content} />
-              )}
-            </div>
-            {step.meta?.tokens && (
-              <div className="conv-step-tokens">
-                {step.meta.tokens.prompt + step.meta.tokens.completion} tokens
+        {data.steps.map((step) => {
+          const isBranchedStep = branchResult && step.index === branchResult.branchAtStep;
+          const isAfterBranch = branchResult && step.index > branchResult.branchAtStep;
+
+          return (
+            <div key={step.index}>
+              <div className={`conv-step conv-step-${step.type} ${isAfterBranch ? 'conv-step-faded' : ''}`}>
+                <div className="conv-step-header">
+                  <span className="conv-step-icon">{stepIcon(step.type)}</span>
+                  <span className="conv-step-type">{stepLabel(step.type)}</span>
+                  {isBranchedStep && <span className="conv-branch-badge">branched here</span>}
+                  {step.meta?.tool_name && (
+                    <span className="conv-step-tool">{step.meta.tool_name}</span>
+                  )}
+                  <span className="conv-step-time">
+                    {step.meta?.latency_ms ? formatTime(step.meta.latency_ms) : ''}
+                  </span>
+                  {editingStep !== step.index && !isAfterBranch && (
+                    <button
+                      className="btn btn-edit"
+                      onClick={(e) => { e.stopPropagation(); startEdit(step); }}
+                      title="Edit this step and re-run from here"
+                      style={{ marginLeft: 'auto', fontSize: 11, padding: '2px 8px' }}
+                    >
+                      What if?
+                    </button>
+                  )}
+                </div>
+
+                {editingStep === step.index ? (
+                  <div className="conv-step-edit">
+                    <textarea
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      rows={Math.min(10, editText.split('\n').length + 2)}
+                      style={{ width: '100%', fontFamily: 'inherit', fontSize: 13, padding: 8, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }}
+                    />
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                      <button className="btn btn-primary" onClick={submitBranch} disabled={branching}>
+                        {branching ? 'Re-running...' : 'Re-run from here'}
+                      </button>
+                      <button className="btn" onClick={cancelEdit} disabled={branching}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="conv-step-content">
+                    {isBranchedStep && (
+                      <div className="conv-step-original">
+                        <span className="conv-step-original-label">original</span>
+                      </div>
+                    )}
+                    {step.type === 'tool_call' ? (
+                      <ToolCallContent step={step} />
+                    ) : step.type === 'tool_result' ? (
+                      <ExpandableContent text={step.content} label="output" preformatted />
+                    ) : step.type === 'thinking' && step.content.length > 200 ? (
+                      <ExpandableContent text={step.content} label="reasoning" />
+                    ) : (
+                      <TextContent text={step.content} />
+                    )}
+                  </div>
+                )}
+
+                {step.meta?.tokens && editingStep !== step.index && (
+                  <div className="conv-step-tokens">
+                    {step.meta.tokens.prompt + step.meta.tokens.completion} tokens
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        ))}
+
+              {/* Show edited content + branch result inline right after the branched step */}
+              {isBranchedStep && branchResult && (
+                <>
+                  <div className="conv-step conv-step-branch-edit">
+                    <div className="conv-step-header">
+                      <span className="conv-step-icon">✎</span>
+                      <span className="conv-step-type">Edited {stepLabel(step.type)}</span>
+                      <span className="conv-branch-badge">what-if</span>
+                    </div>
+                    <div className="conv-step-content">
+                      <TextContent text={branchResult.editedContent} />
+                    </div>
+                  </div>
+
+                  <div className="conv-branch-result">
+                    <div className="conv-branch-header">
+                      <span>{branchResult.turns} {branchResult.turns === 1 ? 'turn' : 'turns'} re-run</span>
+                      <span>{branchResult.totalTokens} tokens, {(branchResult.durationMs / 1000).toFixed(1)}s</span>
+                    </div>
+                    {branchResult.newSteps.map((s, i) => (
+                      <div key={i} className={`conv-step conv-step-${s.role === 'assistant' ? 'answer' : 'tool_result'}`} style={{ marginBottom: 8 }}>
+                        <div className="conv-step-header">
+                          <span className="conv-step-icon">{s.role === 'assistant' ? '✓' : '←'}</span>
+                          <span className="conv-step-type">{s.role === 'assistant' ? 'New LLM Response' : 'Tool Result'}</span>
+                        </div>
+                        <div className="conv-step-content">
+                          <TextContent text={s.content} />
+                        </div>
+                      </div>
+                    ))}
+                    {onOpenSession && (
+                      <button className="btn" onClick={() => onOpenSession(branchResult.sessionId)} style={{ marginTop: 8 }}>
+                        Open full branch session
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -44,7 +44,7 @@ export default function App() {
           <SessionList onSelect={openSession} onDiff={openDiff} />
         )}
         {view === 'session' && selectedSession && (
-          <ConversationView sessionId={selectedSession} onBack={goBack} />
+          <ConversationView sessionId={selectedSession} onBack={goBack} onOpenSession={openSession} />
         )}
         {view === 'diff' && diffSessions && (
           <DiffView session1={diffSessions[0]} session2={diffSessions[1]} onBack={goBack} />

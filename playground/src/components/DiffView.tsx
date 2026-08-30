@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchDiff, judgeCompare, type DiffResult, type JudgeResult } from '../api';
+import { fetchCompare, type CompareResult } from '../api';
 
 interface Props {
   session1: string;
@@ -8,184 +8,113 @@ interface Props {
 }
 
 export default function DiffView({ session1, session2, onBack }: Props) {
-  const [diff, setDiff] = useState<DiffResult | null>(null);
-  const [judgment, setJudgment] = useState<JudgeResult | null>(null);
+  const [data, setData] = useState<CompareResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [judging, setJudging] = useState(false);
-  const [judgeElapsed, setJudgeElapsed] = useState(0);
 
   useEffect(() => {
-    loadDiff();
+    setLoading(true);
+    fetchCompare(session1, session2)
+      .then(setData)
+      .finally(() => setLoading(false));
   }, [session1, session2]);
 
-  const loadDiff = async () => {
-    setLoading(true);
-    const data = await fetchDiff(session1, session2);
-    setDiff(data);
-    setLoading(false);
-  };
+  if (loading) return <div style={{ color: 'var(--text-dim)', padding: 80, textAlign: 'center' }}>Comparing sessions...</div>;
+  if (!data) return <div>Failed to load comparison.</div>;
 
-  const runJudge = async () => {
-    setJudging(true);
-    setJudgeElapsed(0);
-    const timer = setInterval(() => setJudgeElapsed((e) => e + 1), 1000);
-    try {
-      const result = await judgeCompare(session1, session2);
-      setJudgment(result);
-    } catch (e) {
-      console.error('Judge failed:', e);
-    } finally {
-      setJudging(false);
-      clearInterval(timer);
-    }
-  };
-
-  if (loading) return <div style={{ color: 'var(--text-dim)' }}>Computing diff...</div>;
-  if (!diff) return <div>No diff data.</div>;
-
-  const differsCount = diff.comparisons.filter((c) => c.differs).length;
+  const s1 = data.session1;
+  const s2 = data.session2;
 
   return (
     <div>
-      <div className="timeline-header">
-        <div>
-          <button className="btn" onClick={onBack}>← Back</button>
-          <span style={{ marginLeft: 16, fontSize: 16, fontWeight: 600 }}>
-            Comparing Sessions
-          </span>
-        </div>
-        <button
-          className="btn btn-primary"
-          onClick={runJudge}
-          disabled={judging}
-        >
-          {judging ? `Judging... (${judgeElapsed}s)` : judgment ? 'Re-judge' : 'Judge with AI'}
-        </button>
+      <div className="conv-header">
+        <button className="btn" onClick={onBack}>← Back</button>
+        <div className="conv-title">Compare Sessions</div>
       </div>
 
-      <div className="diff-stats">
-        <span>{diff.totalTurns} turns total</span>
-        <span className="differs-count">{differsCount} turns differ</span>
+      <div className="compare-grid">
+        <div className="compare-header" />
+        <div className="compare-header compare-session-label">{s1.sessionId}</div>
+        <div className="compare-header compare-session-label">{s2.sessionId}</div>
+
+        <CompareRow label="Model" v1={s1.model} v2={s2.model} />
+        <CompareRow label="Outcome" v1={outcomeLabel(s1.outcome)} v2={outcomeLabel(s2.outcome)} highlight={(a, b) => a === 'completed' && b !== 'completed' ? 'left' : b === 'completed' && a !== 'completed' ? 'right' : null} />
+        <CompareRow label="Final Answer" v1={s1.finalAnswer ?? '—'} v2={s2.finalAnswer ?? '—'} long />
+        <CompareRow label="Total Tokens" v1={String(s1.totalTokens)} v2={String(s2.totalTokens)} highlight={lower} />
+        <CompareRow label="Prompt Tokens" v1={String(s1.promptTokens)} v2={String(s2.promptTokens)} highlight={lower} />
+        <CompareRow label="Completion Tokens" v1={String(s1.completionTokens)} v2={String(s2.completionTokens)} highlight={lower} />
+        <CompareRow label="Turns" v1={String(s1.totalTurns)} v2={String(s2.totalTurns)} highlight={lower} />
+        <CompareRow label="Total Steps" v1={String(s1.totalSteps)} v2={String(s2.totalSteps)} />
+        <CompareRow label="Avg Latency" v1={`${s1.avgLatencyMs}ms`} v2={`${s2.avgLatencyMs}ms`} highlight={lower} />
+        <CompareRow label="Total Duration" v1={formatMs(s1.totalDurationMs)} v2={formatMs(s2.totalDurationMs)} highlight={lower} />
+        <CompareRow label="Tool Calls" v1={String(s1.toolCalls)} v2={String(s2.toolCalls)} />
+        <CompareRow label="Tools Used" v1={s1.toolsUsed.join(', ') || '—'} v2={s2.toolsUsed.join(', ') || '—'} />
+        <CompareRow label="Health Score" v1={`${s1.healthScore}/100`} v2={`${s2.healthScore}/100`} highlight={higher} />
+        <CompareRow label="Issues" v1={String(s1.issueCount)} v2={String(s2.issueCount)} highlight={lower} />
       </div>
 
-      {/* Judge Results Banner */}
-      {judgment && (
-        <div style={{ marginBottom: 24, padding: '16px 20px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <span style={{ fontSize: 14, fontWeight: 600 }}>AI Judge Verdict</span>
-            <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>judged by {judgment.judgeModel}</span>
+      {/* Issues detail */}
+      {(s1.issues.length > 0 || s2.issues.length > 0) && (
+        <div className="compare-issues">
+          <div className="compare-issues-col">
+            {s1.issues.map((issue, i) => (
+              <div key={i} className={`conv-issue conv-issue-${issue.severity}`}>
+                <span className="conv-issue-icon">{issue.severity === 'critical' ? '●' : issue.severity === 'warning' ? '▲' : 'ℹ'}</span>
+                <span className="conv-issue-message">{issue.message}</span>
+              </div>
+            ))}
           </div>
-
-          <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
-            <ScoreBlock
-              label={judgment.sessionA}
-              score={judgment.overall.scoreA}
-              isWinner={judgment.overall.winner === 'a'}
-            />
-            <span style={{ fontSize: 20, color: 'var(--text-dim)' }}>vs</span>
-            <ScoreBlock
-              label={judgment.sessionB}
-              score={judgment.overall.scoreB}
-              isWinner={judgment.overall.winner === 'b'}
-            />
+          <div className="compare-issues-col">
+            {s2.issues.map((issue, i) => (
+              <div key={i} className={`conv-issue conv-issue-${issue.severity}`}>
+                <span className="conv-issue-icon">{issue.severity === 'critical' ? '●' : issue.severity === 'warning' ? '▲' : 'ℹ'}</span>
+                <span className="conv-issue-message">{issue.message}</span>
+              </div>
+            ))}
           </div>
-
-          <p style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            {judgment.overall.summary}
-          </p>
         </div>
       )}
-
-      {/* Diff Grid */}
-      <div className="diff-container">
-        <div className="diff-column-header">{session1}</div>
-        <div className="diff-column-header">{session2}</div>
-
-        {diff.comparisons.map((comp) => {
-          const tj = judgment?.turns.find(t => t.turnIndex === comp.turnIndex);
-          return (
-            <div key={comp.turnIndex} className="diff-turn">
-              <div className="diff-turn-label">
-                Turn {comp.turnIndex + 1}
-                {comp.session1?.request.content && (
-                  <span style={{ fontWeight: 400, textTransform: 'none', marginLeft: 8 }}>
-                    "{comp.session1.request.content.slice(0, 60)}..."
-                  </span>
-                )}
-                {comp.differs && <span style={{ color: 'var(--purple)', marginLeft: 8 }}>● differs</span>}
-                {tj && (
-                  <span style={{ marginLeft: 12, fontSize: 11, color: tj.scoreA.total > tj.scoreB.total ? 'var(--green)' : tj.scoreB.total > tj.scoreA.total ? 'var(--accent)' : 'var(--text-dim)' }}>
-                    {tj.scoreA.total > tj.scoreB.total ? `← wins (${tj.scoreA.total} vs ${tj.scoreB.total})` :
-                      tj.scoreB.total > tj.scoreA.total ? `wins → (${tj.scoreA.total} vs ${tj.scoreB.total})` :
-                        `tie (${tj.scoreA.total})`}
-                  </span>
-                )}
-              </div>
-              <div className={`diff-cell ${comp.differs ? 'differs' : 'same'}`}>
-                {comp.session1 ? (
-                  <>
-                    <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 6 }}>
-                      {comp.session1.request.model ?? ''} • {(comp.session1.response.duration_ms / 1000).toFixed(1)}s
-                      {tj && <span style={{ marginLeft: 8, color: tj.winner === 'a' ? 'var(--green)' : 'var(--text-dim)' }}>
-                        {tj.scoreA.total}/10
-                      </span>}
-                    </div>
-                    {comp.session1.response.content}
-                  </>
-                ) : (
-                  <span style={{ color: 'var(--text-dim)' }}>— no data —</span>
-                )}
-              </div>
-              <div className={`diff-cell ${comp.differs ? 'differs' : 'same'}`}>
-                {comp.session2 ? (
-                  <>
-                    <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 6 }}>
-                      {comp.session2.request.model ?? ''} • {(comp.session2.response.duration_ms / 1000).toFixed(1)}s
-                      {tj && <span style={{ marginLeft: 8, color: tj.winner === 'b' ? 'var(--green)' : 'var(--text-dim)' }}>
-                        {tj.scoreB.total}/10
-                      </span>}
-                    </div>
-                    {comp.session2.response.content}
-                  </>
-                ) : (
-                  <span style={{ color: 'var(--text-dim)' }}>— no data —</span>
-                )}
-              </div>
-
-              {/* Per-turn judge reason */}
-              {tj && tj.reason && (
-                <>
-                  <div style={{ gridColumn: '1 / -1', fontSize: 11, color: 'var(--text-muted)', padding: '6px 0', fontStyle: 'italic' }}>
-                    Judge: {tj.reason}
-                  </div>
-                </>
-              )}
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
 
-function ScoreBlock({ label, score, isWinner }: { label: string; score: number; isWinner: boolean }) {
+function CompareRow({ label, v1, v2, highlight, long }: {
+  label: string;
+  v1: string;
+  v2: string;
+  highlight?: (a: string, b: string) => 'left' | 'right' | null;
+  long?: boolean;
+}) {
+  const winner = highlight ? highlight(v1, v2) : null;
+
   return (
-    <div style={{
-      padding: '12px 20px',
-      background: isWinner ? 'var(--green-subtle)' : 'var(--surface-2)',
-      border: `1px solid ${isWinner ? 'rgba(34,197,94,0.3)' : 'var(--border)'}`,
-      borderRadius: 'var(--radius-xs)',
-      textAlign: 'center',
-      flex: 1,
-    }}>
-      <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 4, fontFamily: "'JetBrains Mono', monospace" }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 24, fontWeight: 700, color: isWinner ? 'var(--green)' : 'var(--text-muted)' }}>
-        {score.toFixed(1)}
-      </div>
-      <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>/10 avg</div>
-      {isWinner && <div style={{ fontSize: 10, color: 'var(--green)', marginTop: 4, fontWeight: 600 }}>WINNER</div>}
-    </div>
+    <>
+      <div className="compare-label">{label}</div>
+      <div className={`compare-value ${winner === 'left' ? 'compare-winner' : ''} ${long ? 'compare-long' : ''}`}>{v1}</div>
+      <div className={`compare-value ${winner === 'right' ? 'compare-winner' : ''} ${long ? 'compare-long' : ''}`}>{v2}</div>
+    </>
   );
+}
+
+function lower(a: string, b: string): 'left' | 'right' | null {
+  const na = parseFloat(a);
+  const nb = parseFloat(b);
+  if (isNaN(na) || isNaN(nb) || na === nb) return null;
+  return na < nb ? 'left' : 'right';
+}
+
+function higher(a: string, b: string): 'left' | 'right' | null {
+  const na = parseFloat(a);
+  const nb = parseFloat(b);
+  if (isNaN(na) || isNaN(nb) || na === nb) return null;
+  return na > nb ? 'left' : 'right';
+}
+
+function outcomeLabel(outcome: string): string {
+  if (outcome === 'success') return 'completed';
+  if (outcome === 'error') return 'failed';
+  return 'incomplete';
+}
+
+function formatMs(ms: number): string {
+  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
 }

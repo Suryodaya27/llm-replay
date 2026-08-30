@@ -19,10 +19,10 @@ import { join, extname } from 'node:path';
 import { EventStore } from '../core/event-store.js';
 import { startProxy, type ProxyInstance } from './proxy.js';
 import { routerConfigFromEnv } from '../providers/index.js';
-import { parseResponseBody } from '../providers/response-format.js';
-import { judgeSessions } from '../analysis/judge.js';
 import { parseConversation } from '../analysis/conversation-parser.js';
 import { detectIssues } from '../analysis/issue-detector.js';
+import { getSessionStats } from '../analysis/stats.js';
+import { runBranch } from '../core/branch.js';
 import { LiveBroadcast } from './live-broadcast.js';
 import type { ReplayEvent } from '../types.js';
 
@@ -181,74 +181,50 @@ export async function startApiServer(opts?: ApiServerOptions): Promise<{ port: n
         return;
       }
 
-      // Diff two sessions
-      const diffMatch = path.match(/^\/api\/diff\/([^/]+)\/([^/]+)$/);
-      if (diffMatch && req.method === 'GET') {
-        const id1 = decodeURIComponent(diffMatch[1]);
-        const id2 = decodeURIComponent(diffMatch[2]);
+      // Compare two sessions (summary-level)
+      const compareMatch = path.match(/^\/api\/compare\/([^/]+)\/([^/]+)$/);
+      if (compareMatch && req.method === 'GET') {
+        const id1 = decodeURIComponent(compareMatch[1]);
+        const id2 = decodeURIComponent(compareMatch[2]);
 
         if (!(await store.exists(id1)) || !(await store.exists(id2))) {
           json(res, { error: 'One or both sessions not found' }, 404);
           return;
         }
 
-        const events1 = await store.readAll(id1);
-        const events2 = await store.readAll(id2);
+        const [events1, events2] = await Promise.all([store.readAll(id1), store.readAll(id2)]);
+        const [parsed1, parsed2] = [parseConversation(id1, events1), parseConversation(id2, events2)];
+        const [issues1, issues2] = [detectIssues(parsed1), detectIssues(parsed2)];
+        const [stats1, stats2] = await Promise.all([getSessionStats(id1, store), getSessionStats(id2, store)]);
 
-        const turns1 = extractTurns(events1);
-        const turns2 = extractTurns(events2);
-
-        const diff = buildDiff(turns1, turns2, id1, id2);
-        json(res, diff);
-        return;
-      }
-
-      // Judge two sessions (LLM-as-a-judge scoring)
-      if (path === '/api/judge' && req.method === 'POST') {
-        const body = await readBody(req);
-        const { session1, session2, judgeModel } = JSON.parse(body) as {
-          session1: string;
-          session2: string;
-          judgeModel?: string;
-        };
-
-        if (!session1 || !session2) {
-          json(res, { error: 'Missing session1 or session2' }, 400);
-          return;
-        }
-
-        if (!(await store.exists(session1)) || !(await store.exists(session2))) {
-          json(res, { error: 'One or both sessions not found' }, 404);
-          return;
-        }
-
-        const events1 = await store.readAll(session1);
-        const events2 = await store.readAll(session2);
-        const turns1 = extractTurns(events1);
-        const turns2 = extractTurns(events2);
-
-        // Build comparison pairs
-        const pairs = [];
-        const maxLen = Math.min(turns1.length, turns2.length);
-        for (let i = 0; i < maxLen; i++) {
-          pairs.push({
-            question: turns1[i].request.content,
-            responseA: turns1[i].response.content,
-            responseB: turns2[i].response.content,
-          });
-        }
-
-        if (pairs.length === 0) {
-          json(res, { error: 'No comparable turns found' }, 400);
-          return;
-        }
-
-        const result = await judgeSessions(pairs, session1, session2, {
-          model: judgeModel,
-          ollamaUrl: OLLAMA_URL,
+        const buildSummary = (
+          id: string,
+          parsed: typeof parsed1,
+          issues: typeof issues1,
+          statsData: typeof stats1,
+        ) => ({
+          sessionId: id,
+          model: parsed.model || 'unknown',
+          outcome: parsed.summary.outcome,
+          finalAnswer: parsed.steps.filter(s => s.type === 'answer').map(s => s.content).pop() ?? null,
+          totalTokens: statsData.total_tokens.total_tokens,
+          promptTokens: statsData.total_tokens.prompt_tokens,
+          completionTokens: statsData.total_tokens.completion_tokens,
+          totalTurns: statsData.total_turns,
+          avgLatencyMs: statsData.avg_latency_ms,
+          totalDurationMs: statsData.total_duration_ms,
+          toolCalls: parsed.summary.tool_calls,
+          toolsUsed: parsed.summary.tools_used,
+          healthScore: issues.score,
+          issueCount: issues.issues.length,
+          issues: issues.issues.map(i => ({ severity: i.severity, type: i.type, message: i.message })),
+          totalSteps: parsed.summary.total_steps,
         });
 
-        json(res, result);
+        json(res, {
+          session1: buildSummary(id1, parsed1, issues1, stats1),
+          session2: buildSummary(id2, parsed2, issues2, stats2),
+        });
         return;
       }
 
@@ -327,6 +303,50 @@ export async function startApiServer(opts?: ApiServerOptions): Promise<{ port: n
         return;
       }
 
+      // Branch: edit a step and re-run from that point with the real LLM
+      if (path === '/api/branch' && req.method === 'POST') {
+        const body = await readBody(req);
+        const { sessionId: branchFrom, stepIndex, editedContent, newSessionId } = JSON.parse(body) as {
+          sessionId: string;
+          stepIndex: number;
+          editedContent: string;
+          newSessionId?: string;
+        };
+
+        if (!branchFrom || stepIndex === undefined || !editedContent) {
+          json(res, { error: 'Missing sessionId, stepIndex, or editedContent' }, 400);
+          return;
+        }
+
+        if (!(await store.exists(branchFrom))) {
+          json(res, { error: 'Session not found' }, 404);
+          return;
+        }
+
+        try {
+          const { routerConfigFromEnv } = await import('../providers/index.js');
+          const { ProviderRouter } = await import('../providers/router.js');
+          const routerCfg = routerConfigFromEnv();
+          const router = new ProviderRouter(routerCfg);
+
+          const result = await runBranch({
+            sessionId: branchFrom,
+            stepIndex,
+            editedContent,
+            newSessionId,
+            store,
+            router,
+            ollamaBaseUrl: OLLAMA_URL,
+          });
+
+          json(res, result);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Branch failed';
+          json(res, { error: message }, 500);
+        }
+        return;
+      }
+
       // Serve playground static files (if configured)
       if (opts?.playgroundDir) {
         const served = await serveStatic(opts.playgroundDir, path, res);
@@ -357,68 +377,6 @@ export async function startApiServer(opts?: ApiServerOptions): Promise<{ port: n
 }
 
 // --- Helpers ---
-
-interface Turn {
-  index: number;
-  request: { role: string; content: string; model?: string };
-  response: { content: string; duration_ms: number };
-}
-
-function extractTurns(events: ReplayEvent[]): Turn[] {
-  const turns: Turn[] = [];
-  let turnIndex = 0;
-
-  for (let i = 0; i < events.length - 1; i++) {
-    const curr = events[i];
-    const next = events[i + 1];
-    if (curr.type === 'request' && next.type === 'response') {
-      const reqBody = curr.data.body as Record<string, unknown> | undefined;
-      const messages = (reqBody?.messages as Array<{ role: string; content: string }>) ?? [];
-      const lastUser = messages.filter((m) => m.role === 'user').pop();
-      const model = reqBody?.model as string | undefined;
-
-      const parsed = parseResponseBody(next.data.body);
-
-      turns.push({
-        index: turnIndex++,
-        request: {
-          role: 'user',
-          content: lastUser?.content ?? '',
-          model,
-        },
-        response: {
-          content: parsed.content || JSON.stringify(next.data.body),
-          duration_ms: next.data.duration_ms,
-        },
-      });
-      i++; // skip response
-    }
-  }
-  return turns;
-}
-
-function buildDiff(turns1: Turn[], turns2: Turn[], id1: string, id2: string) {
-  const maxLen = Math.max(turns1.length, turns2.length);
-  const comparisons = [];
-
-  for (let i = 0; i < maxLen; i++) {
-    const t1 = turns1[i] ?? null;
-    const t2 = turns2[i] ?? null;
-    comparisons.push({
-      turnIndex: i,
-      session1: t1 ? { session: id1, ...t1 } : null,
-      session2: t2 ? { session: id2, ...t2 } : null,
-      differs: t1 && t2 ? t1.response.content !== t2.response.content : true,
-    });
-  }
-
-  return {
-    session1: id1,
-    session2: id2,
-    totalTurns: maxLen,
-    comparisons,
-  };
-}
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html',

@@ -13,7 +13,6 @@ import { startApiServer } from './server/api-server.js';
 import { EventStore } from './core/event-store.js';
 import { getSessionStats } from './analysis/stats.js';
 import { runTest, parseAssertionString } from './analysis/test-runner.js';
-import { judgeSessions } from './analysis/judge.js';
 import type { Assertion } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -211,54 +210,6 @@ program
       }
     }
     process.exit(result.passed ? 0 : 1);
-  });
-
-// --- JUDGE ---
-program
-  .command('judge')
-  .description('AI-score comparison between two sessions')
-  .requiredOption('--a <id>', 'First session ID')
-  .requiredOption('--b <id>', 'Second session ID')
-  .option('-m, --model <model>', 'Judge model')
-  .option('-d, --store-dir <dir>', 'Session storage directory')
-  .option('-o, --ollama <url>', 'Ollama base URL', DEFAULT_OLLAMA)
-  .option('--json', 'Output as JSON')
-  .action(async (opts) => {
-    const store = new EventStore({ storeDir: opts.storeDir });
-    if (!(await store.exists(opts.a))) { console.error(`Session "${opts.a}" not found`); process.exit(1); }
-    if (!(await store.exists(opts.b))) { console.error(`Session "${opts.b}" not found`); process.exit(1); }
-
-    const events1 = await store.readAll(opts.a);
-    const events2 = await store.readAll(opts.b);
-    const turns1 = extractTurns(events1);
-    const turns2 = extractTurns(events2);
-    const maxLen = Math.min(turns1.length, turns2.length);
-    if (maxLen === 0) { console.error('No comparable turns'); process.exit(1); }
-
-    const pairs = [];
-    for (let i = 0; i < maxLen; i++) {
-      pairs.push({ question: turns1[i].question, responseA: turns1[i].content, responseB: turns2[i].content });
-    }
-
-    console.log(`\n[judge] Comparing "${opts.a}" vs "${opts.b}" (${maxLen} turns)`);
-    const result = await judgeSessions(pairs, opts.a, opts.b, {
-      model: opts.model,
-      ollamaUrl: opts.ollama,
-      onProgress: (turn, total) => process.stdout.write(`\r[judge] Turn ${turn}/${total}...`),
-    });
-
-    if (opts.json) {
-      console.log('\n' + JSON.stringify(result, null, 2));
-    } else {
-      console.log('\n\n' + '═'.repeat(50));
-      console.log(`  ${result.overall.summary}`);
-      console.log('═'.repeat(50) + '\n');
-      for (const t of result.turns) {
-        const arrow = t.winner === 'a' ? '◀' : t.winner === 'b' ? '▶' : '=';
-        console.log(`  Turn ${t.turnIndex + 1}: ${arrow} ${t.scoreA.total}/10 vs ${t.scoreB.total}/10`);
-        if (t.reason) console.log(`    → ${t.reason}`);
-      }
-    }
   });
 
 // --- LS ---
