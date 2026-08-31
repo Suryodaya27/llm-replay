@@ -266,33 +266,3 @@ program
   });
 
 program.parse();
-
-// --- Helpers ---
-
-interface TurnContent { question: string; content: string; }
-
-function extractTurns(events: { type: string; data: unknown }[]): TurnContent[] {
-  const turns: TurnContent[] = [];
-  for (let i = 0; i < events.length; i++) {
-    const e = events[i];
-    if (e.type === 'request') {
-      const reqData = e.data as { body?: { messages?: Array<{ role: string; content: string }> } };
-      const lastUser = reqData.body?.messages?.filter(m => m.role === 'user').pop();
-      const question = lastUser?.content ?? '';
-      for (let j = i + 1; j < events.length; j++) {
-        if (events[j].type === 'response') {
-          const resData = events[j].data as { body?: { message?: { content?: string } } };
-          turns.push({ question, content: resData.body?.message?.content ?? '' });
-          break;
-        }
-        if (events[j].type === 'stream_end') {
-          const seData = events[j].data as { assembled_content?: string };
-          turns.push({ question, content: seData.assembled_content ?? '' });
-          break;
-        }
-        if (events[j].type === 'request') break;
-      }
-    }
-  }
-  return turns;
-}

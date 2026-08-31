@@ -64,6 +64,8 @@ export async function startProxy(config: ProxyConfig): Promise<ProxyInstance> {
   // Session pools
   const captureSessions = new Map<string, CaptureSession>();
   const replaySessions = new Map<string, ReplaySession>();
+  // In-memory seq counters for provider-routed captures (avoids re-reading JSONL)
+  const providerSeqCounters = new Map<string, number>();
 
   function getCaptureSession(sessionId: string): CaptureSession {
     let session = captureSessions.get(sessionId);
@@ -110,7 +112,7 @@ export async function startProxy(config: ProxyConfig): Promise<ProxyInstance> {
           // If request is in OpenAI format and target isn't Ollama, use provider directly
           if (format === 'openai' && model && !isOllamaModel(model, router)) {
             await circuitBreaker.execute(() =>
-              handleProviderCapture(sessionId, model!, body, isStream, store, router, res)
+              handleProviderCapture(sessionId, model!, body, isStream, store, router, res, providerSeqCounters)
             );
           } else {
             // Default: forward to Ollama via CaptureSession
@@ -186,13 +188,14 @@ async function handleProviderCapture(
   store: EventStore,
   router: ProviderRouter,
   res: ServerResponse,
+  seqCounters: Map<string, number>,
 ): Promise<void> {
   const provider = router.resolve(model);
   const chatReq = parseChatRequest(body);
   const clock = new RealClock();
 
-  // Read count once, then increment locally — avoids re-reading the JSONL per event
-  let seq = await store.count(sessionId);
+  // Use in-memory counter — no JSONL scan
+  let seq = seqCounters.get(sessionId) ?? 0;
 
   // Record request
   await store.append(sessionId, {
@@ -260,6 +263,9 @@ async function handleProviderCapture(
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify(response.raw));
   }
+
+  // Persist counter for next call
+  seqCounters.set(sessionId, seq);
 }
 
 // --- Utilities ---

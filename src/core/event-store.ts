@@ -11,8 +11,8 @@
  *   stream million-event sessions without loading everything into RAM.
  */
 
-import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, stat, readdir, unlink } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { appendFile, mkdir, stat, readdir, unlink } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -49,33 +49,15 @@ export class EventStore {
   /** Append a single event to a session file */
   async append(sessionId: string, event: ReplayEvent): Promise<void> {
     await this.init();
-    const line = JSON.stringify(event) + '\n';
-    const stream = createWriteStream(this.sessionPath(sessionId), { flags: 'a' });
-    return new Promise((resolve, reject) => {
-      stream.write(line, (err) => {
-        stream.end();
-        if (err) reject(err);
-        else {
-          if (this._onEvent) this._onEvent(sessionId, event);
-          resolve();
-        }
-      });
-    });
+    await appendFile(this.sessionPath(sessionId), JSON.stringify(event) + '\n');
+    if (this._onEvent) this._onEvent(sessionId, event);
   }
 
   /** Append multiple events atomically (single write) */
   async appendBatch(sessionId: string, events: ReplayEvent[]): Promise<void> {
     if (events.length === 0) return;
     await this.init();
-    const lines = events.map((e) => JSON.stringify(e)).join('\n') + '\n';
-    const stream = createWriteStream(this.sessionPath(sessionId), { flags: 'a' });
-    return new Promise((resolve, reject) => {
-      stream.write(lines, (err) => {
-        stream.end();
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    await appendFile(this.sessionPath(sessionId), events.map((e) => JSON.stringify(e)).join('\n') + '\n');
   }
 
   /**
