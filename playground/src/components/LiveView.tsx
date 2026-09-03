@@ -11,6 +11,35 @@ interface LiveStep {
   meta?: Record<string, unknown>;
 }
 
+function ExpandableStep({ step }: { step: LiveStep }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = step.content.length > 150;
+  const preview = step.content.slice(0, 150);
+
+  return (
+    <div className={`live-step live-step-${step.type}`}>
+      <span className="live-step-icon">{stepIcon(step.type)}</span>
+      <div className="live-step-body">
+        <div className="live-step-type">{step.type}</div>
+        {isLong ? (
+          <>
+            <div className="live-step-content">
+              {expanded ? step.content : `${preview}...`}
+            </div>
+            <button className={`expand-pill expand-pill-compact ${expanded ? 'expand-pill-active' : ''}`} onClick={() => setExpanded(!expanded)}>
+              <span className="expand-pill-icon">{expanded ? '▾' : '▸'}</span>
+              {expanded ? 'Collapse' : 'Expand'}
+            </button>
+          </>
+        ) : (
+          <div className="live-step-content">{step.content}</div>
+        )}
+      </div>
+      <span className="live-step-time">{formatMs(step.time)}</span>
+    </div>
+  );
+}
+
 export default function LiveView() {
   const [connected, setConnected] = useState(false);
   const [steps, setSteps] = useState<LiveStep[]>([]);
@@ -86,14 +115,7 @@ export default function LiveView() {
 
       <div className="live-steps">
         {steps.map((step) => (
-          <div key={step.id} className={`live-step live-step-${step.type}`}>
-            <span className="live-step-icon">{stepIcon(step.type)}</span>
-            <div className="live-step-body">
-              <div className="live-step-type">{step.type}</div>
-              <div className="live-step-content">{step.content}</div>
-            </div>
-            <span className="live-step-time">{formatMs(step.time)}</span>
-          </div>
+          <ExpandableStep key={step.id} step={step} />
         ))}
         <div ref={bottomRef} />
       </div>
@@ -162,7 +184,11 @@ function eventToStep(sessionId: string, event: { seq: number; t: number; type: s
 
     case 'response': {
       const body = data.body as Record<string, unknown> | undefined;
-      const msg = body?.message as Record<string, unknown> | undefined;
+      // OpenAI format: choices[0].message — Ollama format: message
+      const choices = body?.choices as Array<Record<string, unknown>> | undefined;
+      const msg = (choices?.[0]?.message as Record<string, unknown>)
+        ?? (body?.message as Record<string, unknown>)
+        ?? null;
       if (!msg) return null;
 
       const toolCalls = msg.tool_calls as Array<Record<string, unknown>> | undefined;

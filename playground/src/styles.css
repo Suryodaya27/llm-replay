@@ -1226,3 +1226,52 @@ body {
   flex-direction: column;
   gap: 6px;
 }
+
+/* --- Expand/Collapse Pill Buttons --- */
+.expand-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--bg);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+}
+
+.expand-pill:hover {
+  border-color: var(--border-hover);
+  color: var(--text-secondary);
+  background: var(--surface);
+}
+
+.expand-pill-active {
+  background: var(--surface);
+  border-color: var(--border-hover);
+  color: var(--text-secondary);
+}
+
+.expand-pill-icon {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.expand-pill-compact {
+  margin-top: 4px;
+  padding: 3px 10px;
+  font-size: 10px;
+}
+
+.tool-call-preview {
+  color: var(--text-dim);
+  font-weight: 400;
+  margin-left: 2px;
+}

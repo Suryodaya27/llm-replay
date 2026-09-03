@@ -150,8 +150,9 @@ export class CircuitBreaker {
     return Math.max(0, this.config.cooldownMs - elapsed);
   }
 
-  /** Wrap a promise with a timeout */
+  // ponytail: setTimeout max is 2^31-1 ms (~24.8 days); skip timeout entirely for values above that
   private withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    if (ms >= 0x7FFFFFFF) return promise;
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(new Error(`Request timed out after ${ms}ms`));

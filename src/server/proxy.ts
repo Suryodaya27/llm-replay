@@ -33,6 +33,8 @@ export interface ProxyConfig {
   strict?: boolean;
   routerConfig?: RouterConfig;
   onEvent?: (sessionId: string, event: ReplayEvent) => void;
+  /** Request timeout in ms for the circuit breaker (0 = no timeout). Default: 120000 */
+  requestTimeout?: number;
 }
 
 export interface ProxyInstance {
@@ -59,7 +61,8 @@ export async function startProxy(config: ProxyConfig): Promise<ProxyInstance> {
   const router = new ProviderRouter(routerCfg);
 
   // Resilience layers
-  const circuitBreaker = new CircuitBreaker();
+  const cbTimeout = config.requestTimeout ?? 120_000;
+  const circuitBreaker = new CircuitBreaker(cbTimeout === 0 ? { requestTimeout: Number.MAX_SAFE_INTEGER } : { requestTimeout: cbTimeout });
 
   // Session pools
   const captureSessions = new Map<string, CaptureSession>();

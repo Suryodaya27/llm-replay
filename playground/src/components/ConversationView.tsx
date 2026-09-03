@@ -223,8 +223,8 @@ export default function ConversationView({ sessionId, onBack, onOpenSession }: P
                       <ToolCallContent step={step} />
                     ) : step.type === 'tool_result' ? (
                       <ExpandableContent text={step.content} label="output" preformatted />
-                    ) : step.type === 'thinking' && step.content.length > 200 ? (
-                      <ExpandableContent text={step.content} label="reasoning" />
+                    ) : (step.type === 'thinking' || step.type === 'answer' || step.type === 'user') && step.content.length > 200 ? (
+                      <ExpandableContent text={step.content} label={step.type === 'user' ? 'prompt' : step.type === 'answer' ? 'response' : 'reasoning'} />
                     ) : (
                       <TextContent text={step.content} />
                     )}
@@ -290,26 +290,33 @@ function ToolCallContent({ step }: { step: ConversationStep }) {
   const args = step.meta?.tool_args ?? {};
   const hasArgs = Object.keys(args).length > 0;
 
+  const preview = hasArgs
+    ? Object.entries(args).map(([k, v]) => {
+      const val = typeof v === 'string' ? v : JSON.stringify(v);
+      return `${k}=${val.length > 60 ? val.slice(0, 57) + '...' : val}`;
+    }).join(', ')
+    : '';
+
   return (
     <div className="tool-call-block">
-      <div className="tool-call-name" onClick={() => setExpanded(!expanded)} style={{ cursor: 'pointer' }}>
-        {name}
-        <span className="tool-expand-hint">{expanded ? '▼' : '▶'} {hasArgs ? 'inputs' : 'no inputs'}</span>
+      <div className="tool-call-name">
+        <strong>{name}</strong>
+        <span className="tool-call-preview">({preview})</span>
       </div>
+      {hasArgs && (
+        <button className="expand-pill" onClick={() => setExpanded(!expanded)}>
+          <span className="expand-pill-icon">{expanded ? '▾' : '▸'}</span>
+          {expanded ? 'Hide args' : 'Show args'}
+        </button>
+      )}
       {expanded && (
         <div className="tool-call-args">
-          {hasArgs ? (
-            Object.entries(args).map(([key, value]) => (
-              <div key={key} className="tool-call-arg">
-                <span className="tool-arg-key">{key}:</span>
-                <span className="tool-arg-value">{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</span>
-              </div>
-            ))
-          ) : (
-            <div className="tool-call-arg">
-              <span className="tool-arg-value" style={{ fontStyle: 'italic' }}>No arguments passed (model sent empty object)</span>
+          {Object.entries(args).map(([key, value]) => (
+            <div key={key} className="tool-call-arg">
+              <span className="tool-arg-key">{key}:</span>
+              <span className="tool-arg-value">{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</span>
             </div>
-          )}
+          ))}
         </div>
       )}
     </div>
@@ -334,20 +341,13 @@ function TextContent({ text }: { text: string }) {
 
 function ExpandableContent({ text, label, preformatted }: { text: string; label: string; preformatted?: boolean }) {
   const [expanded, setExpanded] = useState(false);
-  const preview = text.slice(0, 120);
-  const isLong = text.length > 120;
 
   return (
     <div>
-      <div
-        onClick={() => setExpanded(!expanded)}
-        style={{ cursor: 'pointer', display: 'flex', alignItems: 'baseline', gap: 8 }}
-      >
-        <span className="tool-expand-hint">{expanded ? '▼' : '▶'} {label}</span>
-        {!expanded && isLong && (
-          <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{preview}...</span>
-        )}
-      </div>
+      <button className={`expand-pill ${expanded ? 'expand-pill-active' : ''}`} onClick={() => setExpanded(!expanded)}>
+        <span className="expand-pill-icon">{expanded ? '▾' : '▸'}</span>
+        {expanded ? `Hide ${label}` : `Show ${label}`}
+      </button>
       {expanded && (
         preformatted ? (
           <pre className="conv-code-block" style={{ marginTop: 8 }}>{text}</pre>

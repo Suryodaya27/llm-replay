@@ -35,6 +35,7 @@ program
   .option('-s, --session <id>', 'Session name (default: auto-generated)')
   .option('-o, --ollama <url>', 'Ollama base URL', DEFAULT_OLLAMA)
   .option('-d, --store-dir <dir>', 'Session storage directory')
+  .option('-t, --timeout <ms>', 'Request timeout in ms (0 = no timeout)', '0')
   .action(async (opts) => {
     // Resolve playground build dir (relative to package root, not cwd)
     const playgroundDir = resolve(__dirname, '..', 'playground', 'dist');
@@ -56,6 +57,7 @@ program
       sessionId,
       ollamaBaseUrl: opts.ollama,
       storeDir: opts.storeDir,
+      requestTimeout: Number(opts.timeout),
       onEvent: (sessionId: string, event: { seq: number; t: number; type: string; data: unknown }) => {
         server.broadcast.emit({ session_id: sessionId, event });
       },
@@ -85,6 +87,7 @@ program
   .option('-s, --session <id>', 'Session ID (default: auto-generated)')
   .option('-o, --ollama <url>', 'Ollama base URL', DEFAULT_OLLAMA)
   .option('-d, --store-dir <dir>', 'Session storage directory')
+  .option('-t, --timeout <ms>', 'Request timeout in ms (0 = no timeout)', '0')
   .action(async (opts) => {
     const sessionId = opts.session ?? `capture-${Date.now()}`;
     const proxy = await startProxy({
@@ -93,6 +96,7 @@ program
       sessionId,
       ollamaBaseUrl: opts.ollama,
       storeDir: opts.storeDir,
+      requestTimeout: Number(opts.timeout),
     });
     console.log(`[capture] Proxy listening on :${proxy.port}`);
     console.log(`[capture] Session: ${proxy.sessionId}`);
