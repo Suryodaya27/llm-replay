@@ -55,7 +55,7 @@ export function parseResponseBody(body: unknown): ParsedResponse {
 
   // Anthropic: has content[] with typed blocks and a top-level "type" or "role"
   if (Array.isArray(obj.content) && obj.content.length > 0 &&
-      typeof (obj.content as Array<Record<string, unknown>>)[0]?.type === 'string') {
+    typeof (obj.content as Array<Record<string, unknown>>)[0]?.type === 'string') {
     return parseAnthropic(obj);
   }
 
@@ -145,17 +145,56 @@ export function extractTokensFromBody(body: unknown): TokenUsage | undefined {
   return extractOllamaTokens(obj);
 }
 
+/** Extract image URLs/data URIs from a message content field (any provider format). */
+export function extractImages(msg: Record<string, unknown>): string[] {
+  const images: string[] = [];
+
+  // Ollama format: top-level "images" array of raw base64 strings
+  if (Array.isArray(msg.images)) {
+    for (const img of msg.images as string[]) {
+      if (typeof img === 'string' && img.length > 0) {
+        images.push(img.startsWith('data:') ? img : `data:image/png;base64,${img}`);
+      }
+    }
+  }
+
+  // OpenAI / Anthropic format: content blocks array
+  if (Array.isArray(msg.content)) {
+    for (const block of msg.content as Array<Record<string, unknown>>) {
+      if (block.type === 'image_url') {
+        const url = (block.image_url as Record<string, unknown>)?.url as string | undefined;
+        if (url) images.push(url);
+      } else if (block.type === 'image') {
+        const source = block.source as Record<string, unknown> | undefined;
+        if (source?.type === 'base64' && source.data) {
+          images.push(`data:${source.media_type ?? 'image/png'};base64,${source.data}`);
+        }
+      }
+    }
+  }
+
+  return images;
+}
+
 /** Extract text content from an assistant message (any provider format). */
 export function extractAssistantContent(msg: Record<string, unknown>): string {
   // String content (OpenAI/Ollama)
   if (typeof msg.content === 'string') return msg.content;
 
-  // Array content (Anthropic: [{type:"text", text:"..."}, ...])
+  // Array content (OpenAI vision / Anthropic: [{type:"text", text:"..."}, {type:"image_url", ...}])
   if (Array.isArray(msg.content)) {
-    return (msg.content as Array<Record<string, unknown>>)
-      .filter(block => block.type === 'text')
-      .map(block => (block.text as string) ?? '')
-      .join('\n');
+    const parts: string[] = [];
+    for (const block of msg.content as Array<Record<string, unknown>>) {
+      if (block.type === 'text') {
+        parts.push((block.text as string) ?? '');
+      } else if (block.type === 'image_url') {
+        parts.push('[image]');
+      } else if (block.type === 'image') {
+        // Anthropic format: { type: "image", source: { type: "base64", ... } }
+        parts.push('[image]');
+      }
+    }
+    return parts.join('\n');
   }
 
   return '';

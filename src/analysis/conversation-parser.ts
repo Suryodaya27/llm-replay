@@ -13,7 +13,7 @@
 
 import {
   extractAssistantMessage, extractAssistantContent, extractToolCalls,
-  extractTokensFromBody,
+  extractTokensFromBody, extractImages,
 } from '../providers/response-format.js';
 import type { ReplayEvent } from '../types.js';
 
@@ -37,6 +37,8 @@ export interface ConversationStep {
     model?: string;
     tokens?: { prompt: number; completion: number };
     latency_ms?: number;
+    /** Image URLs or base64 data URIs from vision messages */
+    images?: string[];
   };
 }
 
@@ -85,6 +87,9 @@ export function parseConversation(sessionId: string, events: ReplayEvent[]): Par
     }
   }
 
+  // Track user messages already added (by content) to avoid duplicates from repeated history
+  const seenUserMessages = new Set<string>();
+
   for (let i = 0; i < events.length; i++) {
     const event = events[i];
 
@@ -105,13 +110,16 @@ export function parseConversation(sessionId: string, events: ReplayEvent[]): Par
         if (role === 'user') {
           const content = extractAssistantContent(msg);
           if (content.startsWith('OBSERVATION:') || content.startsWith('Tool result:')) continue;
-          if (messages.indexOf(msg) <= 1 && !steps.some(s => s.type === 'user')) {
+          if (!seenUserMessages.has(content)) {
+            seenUserMessages.add(content);
+            const images = extractImages(msg);
             steps.push({
               type: 'user',
               index: stepIndex++,
               seq: event.seq,
               time_ms: event.t,
               content,
+              meta: images.length > 0 ? { images } : undefined,
             });
           }
         }

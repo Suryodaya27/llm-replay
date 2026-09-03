@@ -1275,3 +1275,21 @@ body {
   font-weight: 400;
   margin-left: 2px;
 }
+
+
+/* --- Inline Images --- */
+.conv-step-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.conv-step-image {
+  max-width: 320px;
+  max-height: 240px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  object-fit: contain;
+  background: var(--surface);
+}

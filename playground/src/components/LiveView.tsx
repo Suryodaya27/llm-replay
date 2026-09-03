@@ -15,6 +15,7 @@ function ExpandableStep({ step }: { step: LiveStep }) {
   const [expanded, setExpanded] = useState(false);
   const isLong = step.content.length > 150;
   const preview = step.content.slice(0, 150);
+  const images = (step.meta?.images ?? []) as string[];
 
   return (
     <div className={`live-step live-step-${step.type}`}>
@@ -33,6 +34,13 @@ function ExpandableStep({ step }: { step: LiveStep }) {
           </>
         ) : (
           <div className="live-step-content">{step.content}</div>
+        )}
+        {images.length > 0 && (
+          <div className="conv-step-images">
+            {images.map((src, i) => (
+              <img key={i} src={src} alt={`Attached image ${i + 1}`} className="conv-step-image" />
+            ))}
+          </div>
         )}
       </div>
       <span className="live-step-time">{formatMs(step.time)}</span>
@@ -154,8 +162,12 @@ function eventToStep(sessionId: string, event: { seq: number; t: number; type: s
 
       // Check if this is the first user message
       if (messages.length <= 2 && messages[messages.length - 1]?.role === 'user') {
-        const content = (messages[messages.length - 1].content as string) ?? '';
-        return { id: `${sessionId}-${event.seq}`, session_id: sessionId, type: 'user', content, time: event.t };
+        const msg = messages[messages.length - 1];
+        const { text, images } = extractContent(msg.content, msg as Record<string, unknown>);
+        return {
+          id: `${sessionId}-${event.seq}`, session_id: sessionId, type: 'user', content: text, time: event.t,
+          meta: images.length > 0 ? { images } : undefined,
+        };
       }
 
       // Find tool results that come AFTER the last assistant message (these are new)
@@ -241,4 +253,40 @@ function stepIcon(type: string): string {
 function formatMs(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
+}
+
+/** Extract displayable text + images from a message (any provider format). */
+function extractContent(content: unknown, msg?: Record<string, unknown>): { text: string; images: string[] } {
+  const images: string[] = [];
+
+  // Ollama: top-level "images" array on the message
+  if (msg && Array.isArray(msg.images)) {
+    for (const img of msg.images as string[]) {
+      if (typeof img === 'string' && img.length > 0) {
+        images.push(img.startsWith('data:') ? img : `data:image/png;base64,${img}`);
+      }
+    }
+  }
+
+  if (typeof content === 'string') return { text: content, images };
+
+  // OpenAI / Anthropic: content blocks array
+  if (Array.isArray(content)) {
+    const textParts: string[] = [];
+    for (const block of content as Array<Record<string, unknown>>) {
+      if (block.type === 'text') textParts.push((block.text as string) ?? '');
+      else if (block.type === 'image_url') {
+        const url = (block.image_url as Record<string, unknown>)?.url as string | undefined;
+        if (url) images.push(url);
+      } else if (block.type === 'image') {
+        const source = block.source as Record<string, unknown> | undefined;
+        if (source?.type === 'base64' && source.data) {
+          images.push(`data:${source.media_type ?? 'image/png'};base64,${source.data}`);
+        }
+      }
+    }
+    return { text: textParts.join('\n'), images };
+  }
+
+  return { text: '', images };
 }

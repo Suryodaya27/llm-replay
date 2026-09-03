@@ -15,6 +15,7 @@ interface ConversationStep {
     model?: string;
     tokens?: { prompt: number; completion: number };
     latency_ms?: number;
+    images?: string[];
   };
 }
 
@@ -224,9 +225,16 @@ export default function ConversationView({ sessionId, onBack, onOpenSession }: P
                     ) : step.type === 'tool_result' ? (
                       <ExpandableContent text={step.content} label="output" preformatted />
                     ) : (step.type === 'thinking' || step.type === 'answer' || step.type === 'user') && step.content.length > 200 ? (
-                      <ExpandableContent text={step.content} label={step.type === 'user' ? 'prompt' : step.type === 'answer' ? 'response' : 'reasoning'} />
+                      <ExpandableContent text={step.content} label={step.type === 'user' ? 'prompt' : 'response'} />
                     ) : (
                       <TextContent text={step.content} />
+                    )}
+                    {step.meta?.images && step.meta.images.length > 0 && (
+                      <div className="conv-step-images">
+                        {step.meta.images.map((src, i) => (
+                          <img key={i} src={src} alt={`Attached image ${i + 1}`} className="conv-step-image" />
+                        ))}
+                      </div>
                     )}
                   </div>
                 )}
@@ -374,7 +382,7 @@ function stepIcon(type: string): string {
 function stepLabel(type: string): string {
   switch (type) {
     case 'user': return 'User';
-    case 'thinking': return 'Agent';
+    case 'thinking': return 'LLM Response';
     case 'tool_call': return 'Tool Call';
     case 'tool_result': return 'Tool Result';
     case 'answer': return 'Final Answer';

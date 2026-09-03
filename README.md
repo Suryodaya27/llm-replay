@@ -39,6 +39,9 @@ Open http://localhost:3001 — dashboard, API, and WebSocket all on one port.
 # Name your session
 node dist/cli.js ui --session my-experiment
 
+# For slow local models, disable the request timeout
+node dist/cli.js ui --session my-experiment --timeout 0
+
 # Run any agent against the proxy (separate terminal)
 curl http://localhost:11435/api/chat -d '{
   "model": "llama3",
@@ -56,6 +59,7 @@ Every LLM interaction is recorded with full fidelity:
 - **Tool/function calls** — name, arguments, and results for each invocation
 - **Streaming chunks** — individual tokens as they arrive, assembled into full responses
 - **Token usage and latency** — per-turn metrics across all providers
+- **Vision/image inputs** — images from Ollama, OpenAI, and Anthropic formats rendered inline in the dashboard
 
 ## What it catches
 
@@ -140,6 +144,8 @@ client = anthropic.Anthropic(base_url="http://localhost:11435")
 | **CI Assertions** | `test --assert "contains:X"` — exit 0/1 |
 | **Replay** | Serve recorded LLM responses for deterministic agent testing |
 | **Named Sessions** | `ui --session my-run` for organized capture |
+| **No-Timeout Mode** | `--timeout 0` for slow local models — no circuit breaker trips |
+| **Vision Support** | Images from Ollama/OpenAI/Anthropic rendered inline in the dashboard |
 
 ## Screenshots
 
@@ -150,6 +156,23 @@ client = anthropic.Anthropic(base_url="http://localhost:11435")
 | ![Compare](screenshots/compare.png) | Side-by-side session comparison: tokens, latency, health |
 | ![Live](screenshots/live.png) | Live tab showing real-time WebSocket event output |
 | ![Sessions](screenshots/sessions.png) | Sessions tab listing all captured agent sessions |
+
+## Example: Code Review Agent
+
+The `examples/code-review-agent/` directory contains a multi-step tool-calling agent that reviews code diffs. It runs through the llm-replay proxy, so you can inspect, replay, and debug the full agent session.
+
+```bash
+# Terminal 1: start llm-replay
+node dist/cli.js ui --session code-review
+
+# Terminal 2: run the agent
+cd examples/code-review-agent && npm install
+npm run review -- --ref main --model gemma4:cloud --verbose
+```
+
+The agent calls `get_git_diff`, `read_file`, `search_code`, and more — typically 10-20 tool calls per review. Open http://localhost:3001 to watch it work in real-time.
+
+See [examples/code-review-agent/README.md](examples/code-review-agent/README.md) for full usage.
 
 ## Requirements
 
@@ -163,6 +186,7 @@ client = anthropic.Anthropic(base_url="http://localhost:11435")
 |---------|-------------|
 | `ui` | Start everything (API + proxy + dashboard on one port) |
 | `ui --session <name>` | Start with a named session |
+| `ui --timeout <ms>` | Set request timeout (0 = no timeout, default) |
 | `capture --session <id>` | Start capture proxy only |
 | `replay --session <id>` | Serve recorded responses (for testing without LLM) |
 | `stats --session <id>` | Token/latency breakdown |
@@ -231,6 +255,9 @@ src/
     ollama.ts / openai.ts / anthropic.ts
 
   __tests__/            # Unit + integration tests
+
+examples/
+  code-review-agent/    # Multi-step tool-calling agent (demo + stress test)
 ```
 
 ## Design Patterns

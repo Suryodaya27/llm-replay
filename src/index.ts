@@ -11,6 +11,6 @@ export { getSessionStats } from './analysis/stats.js';
 export { runTest, parseAssertionString } from './analysis/test-runner.js';
 export { parseConversation } from './analysis/conversation-parser.js';
 export { LiveBroadcast } from './server/live-broadcast.js';
-export { ProviderRouter, OllamaProvider, OpenAIProvider, AnthropicProvider, defaultRouterConfig, routerConfigFromEnv, parseResponseBody, parseStreamChunk, extractTokensFromBody, extractAssistantContent, extractAssistantMessage, extractToolCalls } from './providers/index.js';
+export { ProviderRouter, OllamaProvider, OpenAIProvider, AnthropicProvider, defaultRouterConfig, routerConfigFromEnv, parseResponseBody, parseStreamChunk, extractTokensFromBody, extractAssistantContent, extractAssistantMessage, extractToolCalls, extractImages } from './providers/index.js';
 export type { Provider, ChatRequest, ChatResponse, StreamChunk, ProviderConfig, RouterConfig, ParsedResponse, ParsedChunk, ParsedToolCall } from './providers/index.js';
 export type * from './types.js';
